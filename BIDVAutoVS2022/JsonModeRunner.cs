@@ -2,13 +2,14 @@
 using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
-using System.Data.OleDb;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using ExcelDataReader;
 
 namespace BIDVAutoVS2022
 {
@@ -336,30 +337,58 @@ namespace BIDVAutoVS2022
         private static List<Dictionary<string, string>> ReadExcelRows(string path)
         {
             var rows = new List<Dictionary<string, string>>();
-            string conn = $"Provider=Microsoft.ACE.OLEDB.12.0;Data Source={path};Extended Properties='Excel 12.0 Xml;HDR=YES;IMEX=1';";
-            using var connection = new OleDbConnection(conn);
-            connection.Open();
+            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-            DataTable schema = connection.GetOleDbSchemaTable(OleDbSchemaGuid.Tables, null);
-            if (schema.Rows.Count == 0)
+            using (var stream = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             {
-                return rows;
-            }
-
-            string firstSheet = schema.Rows[0]["TABLE_NAME"].ToString() ?? "Sheet1$";
-            using var adapter = new OleDbDataAdapter($"SELECT * FROM [{firstSheet}]", connection);
-            var table = new DataTable();
-            adapter.Fill(table);
-
-            foreach (DataRow dr in table.Rows)
-            {
-                var item = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-                foreach (DataColumn col in table.Columns)
+                using (var reader = ExcelReaderFactory.CreateReader(stream))
                 {
-                    item[col.ColumnName.Trim().ToLowerInvariant()] = dr[col]?.ToString()?.Trim() ?? string.Empty;
+                    var conf = new ExcelDataSetConfiguration
+                    {
+                        ConfigureDataTable = _ => new ExcelDataTableConfiguration
+                        {
+                            UseHeaderRow = false
+                        }
+                    };
+
+                    DataSet result = reader.AsDataSet(conf);
+                    if (result.Tables.Count == 0)
+                    {
+                        return rows;
+                    }
+                    DataTable table = result.Tables[0];
+                    if (table.Rows.Count == 0)
+                    {
+                        return rows;
+                    }
+                    var headers = new List<string>();
+                    foreach (object? value in table.Rows[0].ItemArray)
+                    {
+                        string header = value?.ToString()?.Trim().ToLowerInvariant() ?? string.Empty;
+                        headers.Add(header);
+                    }
+
+                    for (int rowIndex = 1; rowIndex < table.Rows.Count; rowIndex++)
+                    {
+                        var item = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        for (int colIndex = 0; colIndex < headers.Count; colIndex++)
+                        {
+                            string header = headers[colIndex];
+                            if (string.IsNullOrWhiteSpace(header))
+                            {
+                                continue;
+                            }
+
+                            item[header] = colIndex < table.Columns.Count
+                                ? table.Rows[rowIndex][colIndex]?.ToString()?.Trim() ?? string.Empty
+                                : string.Empty;
+                        }
+
+                        rows.Add(item);
+                    }
                 }
-                rows.Add(item);
             }
+
             return rows;
         }
 

@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <PackageReference Include="DotNetSeleniumExtras.WaitHelpers" Version="3.11.0" />
+	<PackageReference Include="ExcelDataReader" Version="3.7.0" />
+    <PackageReference Include="ExcelDataReader.DataSet" Version="3.7.0" />
     <PackageReference Include="log4net" Version="3.0.3" />
     <PackageReference Include="Npgsql" Version="9.0.2" />
     <PackageReference Include="Selenium.Support" Version="4.27.0" />
