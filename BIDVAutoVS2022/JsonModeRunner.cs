@@ -36,11 +36,8 @@ namespace BIDVAutoVS2022
             var detailSteps = ReadScript(detailScriptPath);
             var inputRows = ReadInputRows(excelPath);
 
-            var previous = ReadResultIfExists(fixedResultPath);
-            var previousByStt = previous.Data.ToDictionary(x => x.Stt, x => x, StringComparer.OrdinalIgnoreCase);
-
-            bool headerDone = previous.HeaderDaChay || headerSteps.Count == 0;
-            if (!headerDone)
+            bool headerDone = headerSteps.Count == 0;
+            if (headerSteps.Count > 0)
             {
                 ExecuteSteps(headerSteps, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Path.GetDirectoryName(detailScriptPath) ?? baseDir);
                 headerDone = true;
@@ -63,35 +60,18 @@ namespace BIDVAutoVS2022
                 {
                     continue;
                 }
-
-                previousByStt.TryGetValue(stt, out JsonRunItem? oldItem);
-                if (oldItem != null && oldItem.Status.Equals("success", StringComparison.OrdinalIgnoreCase))
-                {
-                    newItems.Add(new JsonRunItem
-                    {
-                        Id = oldItem.Id,
-                        Stt = stt,
-                        LanChay = oldItem.LanChay,
-                        Status = "success",
-                        Message = "Pass case (đã thành công từ lần chạy trước)",
-                        MessageBefore = oldItem.Message
-                    });
-                    success++;
-                    continue;
-                }
-
-                int lastRun = oldItem?.LanChay ?? 0;
+                
                 try
                 {
                     ExecuteSteps(detailSteps, row, Path.GetDirectoryName(detailScriptPath) ?? baseDir);
                     newItems.Add(new JsonRunItem
                     {
-                        Id = oldItem?.Id ?? stt,
+                        Id = stt,
                         Stt = stt,
-                        LanChay = lastRun + 1,
+                        LanChay = 1,
                         Status = "success",
                         Message = $"Đã xử lý case STT={stt} bằng JSON mode ({detailSteps.Count} bước định nghĩa).",
-                        MessageBefore = oldItem?.Message ?? string.Empty
+                        MessageBefore = string.Empty
                     });
                     success++;
                 }
@@ -99,12 +79,12 @@ namespace BIDVAutoVS2022
                 {
                     newItems.Add(new JsonRunItem
                     {
-                        Id = oldItem?.Id ?? stt,
+                        Id = stt,
                         Stt = stt,
-                        LanChay = lastRun + 1,
+                        LanChay = 1,
                         Status = "error",
                         Message = ex.Message,
-                        MessageBefore = oldItem?.Message ?? string.Empty
+                        MessageBefore = string.Empty
                     });
                     fail++;
                 }
