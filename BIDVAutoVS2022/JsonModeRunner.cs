@@ -10,6 +10,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using ExcelDataReader;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Interactions;
+using OpenQA.Selenium.Support.UI;
 
 namespace BIDVAutoVS2022
 {
@@ -36,57 +39,89 @@ namespace BIDVAutoVS2022
             var detailSteps = ReadScript(detailScriptPath);
             var inputRows = ReadInputRows(excelPath);
 
-            bool headerDone = headerSteps.Count == 0;
-            if (headerSteps.Count > 0)
-            {
-                ExecuteSteps(headerSteps, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Path.GetDirectoryName(detailScriptPath) ?? baseDir);
-                headerDone = true;
-            }
+            string pathDownload = ConfigurationManager.AppSettings["path_download"] ?? Path.Combine(baseDir, "download");
+            string version = ConfigurationManager.AppSettings["version"] ?? "v0.36.0";
+            string onlineVersion = ConfigurationManager.AppSettings["online_version"] ?? "0";
+            string isBrowseChrome = ConfigurationManager.AppSettings["is_browse_chrome"] ?? "0";
+            string versionFirerfox = ConfigurationManager.AppSettings["version_firerfox"] ?? "v0.36.0";
+            string cheDoChayNheNhat = ConfigurationManager.AppSettings["che_do_chay_nhe_nhat"] ?? "0";
+            string quitBrowse = ConfigurationManager.AppSettings["quit_browse"] ?? "1";
 
+            string folderDownloadCur = Path.Combine(pathDownload, DateTime.Now.ToString("yyyy_MM_dd_HH_mm_ss", CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(folderDownloadCur);
+            string tempProfile = Path.Combine(baseDir, "temp", "json_profile");
+            Directory.CreateDirectory(tempProfile);
+
+            IWebDriver driverGC = null;
+            Actions actions = null;
+
+            bool headerDone = headerSteps.Count == 0;
             var newItems = new List<JsonRunItem>();
             int success = 0;
             int fail = 0;
 
-            foreach (var row in inputRows)
+            try
             {
-                string stt = row.ContainsKey("stt") ? row["stt"] : string.Empty;
-                if (string.IsNullOrWhiteSpace(stt))
+                driverGC = Program.GetWebDriver(isBrowseChrome, folderDownloadCur, version, versionFirerfox, onlineVersion, "0", "0", cheDoChayNheNhat, tempProfile);
+                driverGC.Manage().Window.Maximize();
+                actions = new Actions(driverGC);
+
+
+                if (headerSteps.Count > 0)
                 {
-                    continue;
+                    ExecuteSteps(headerSteps, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Path.GetDirectoryName(detailScriptPath) ?? baseDir, driverGC, actions);
+                    headerDone = true;
                 }
 
-                string onOff = row.ContainsKey("on_off") ? row["on_off"] : "1";
-                if (onOff != "1")
+                foreach (var row in inputRows)
                 {
-                    continue;
-                }
-                
-                try
-                {
-                    ExecuteSteps(detailSteps, row, Path.GetDirectoryName(detailScriptPath) ?? baseDir);
-                    newItems.Add(new JsonRunItem
+                    string stt = row.ContainsKey("stt") ? row["stt"] : string.Empty;
+                    if (string.IsNullOrWhiteSpace(stt))
                     {
-                        Id = stt,
-                        Stt = stt,
-                        LanChay = 1,
-                        Status = "success",
-                        Message = $"Đã xử lý case STT={stt} bằng JSON mode ({detailSteps.Count} bước định nghĩa).",
-                        MessageBefore = string.Empty
-                    });
-                    success++;
-                }
-                catch (Exception ex)
-                {
-                    newItems.Add(new JsonRunItem
+                        continue;
+                    }
+
+                    string onOff = row.ContainsKey("on_off") ? row["on_off"] : "1";
+                    if (onOff != "1")
                     {
-                        Id = stt,
-                        Stt = stt,
-                        LanChay = 1,
-                        Status = "error",
-                        Message = ex.Message,
-                        MessageBefore = string.Empty
-                    });
-                    fail++;
+                        continue;
+                    }
+
+                    try
+                    {
+                        ExecuteSteps(detailSteps, row, Path.GetDirectoryName(detailScriptPath) ?? baseDir, driverGC, actions);
+                        newItems.Add(new JsonRunItem
+                        {
+                            Id = stt,
+                            Stt = stt,
+                            LanChay = 1,
+                            Status = "success",
+                            Message = $"Đã xử lý case STT={stt} bằng JSON mode ({detailSteps.Count} bước định nghĩa).",
+                            MessageBefore = string.Empty
+                        });
+                        success++;
+                    }
+                    catch (Exception ex)
+                    {
+                        newItems.Add(new JsonRunItem
+                        {
+                            Id = stt,
+                            Stt = stt,
+                            LanChay = 1,
+                            Status = "error",
+                            Message = ex.Message,
+                            MessageBefore = string.Empty
+                        });
+                        fail++;
+                    }
+                }
+            }
+            finally
+            {
+                if (quitBrowse == "1" && driverGC != null)
+                {
+                    driverGC.Quit();
+                    driverGC.Dispose();
                 }
             }
 
@@ -108,7 +143,7 @@ namespace BIDVAutoVS2022
             Logger.LogInfo($"Kết quả mới: {stampFile}");
         }
 
-        private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory)
+        private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions)
         {
             foreach (var step in steps.OrderBy(x => GetIntValue(x, "order_by", 0)))
             {
@@ -133,17 +168,85 @@ namespace BIDVAutoVS2022
                     {
                         string loopPath = Path.IsPathRooted(fileLoop) ? fileLoop : Path.GetFullPath(Path.Combine(scriptDirectory, fileLoop));
                         var loopSteps = ReadScript(loopPath);
-                        ExecuteSteps(loopSteps, rowValues, Path.GetDirectoryName(loopPath) ?? scriptDirectory);
+                        ExecuteSteps(loopSteps, rowValues, Path.GetDirectoryName(loopPath) ?? scriptDirectory, driverGC, actions);
                     }
                 }
                 else
                 {
                     string inputValue = ResolveInputValue(GetStringValue(step, "input_value", ""), rowValues);
                     string selector = ResolveInputValue(GetStringValue(step, "s_value", ""), rowValues);
+                    bool isClick = GetBoolValueFlexible(step, "is_click", false);
+                    bool isClickAc = GetBoolValueFlexible(step, "is_click_ac", false);
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
+                    ExecuteUiStep(driverGC, actions, typeBy, selector, inputValue, inMs, isClick, isClickAc);
                 }
 
                 SleepMs(endMs);
+            }
+        }
+
+        private static void ExecuteUiStep(IWebDriver driverGC, Actions actions, string typeBy, string selector, string inputValue, int inMs, bool isClick, bool isClickAc)
+        {
+            if (string.Equals(typeBy, "url", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.IsNullOrWhiteSpace(selector))
+                {
+                    driverGC.Navigate().GoToUrl(selector);
+                }
+                return;
+            }
+
+            if (string.Equals(typeBy, "switch_to_default", StringComparison.OrdinalIgnoreCase))
+            {
+                driverGC.SwitchTo().DefaultContent();
+                return;
+            }
+
+            By by = BuildBy(typeBy, selector);
+            IWebElement element = WaitAndFindElement(driverGC, by, inMs);
+
+            if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
+            {
+                element.Clear();
+                element.SendKeys(inputValue);
+            }
+
+            if (isClickAc)
+            {
+                actions.MoveToElement(element).Click().Perform();
+            }
+            else if (isClick || string.IsNullOrWhiteSpace(inputValue))
+            {
+                element.Click();
+            }
+        }
+
+        private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int inMs)
+        {
+            int timeoutMs = inMs > 0 ? inMs : 5000;
+            var wait = new WebDriverWait(driverGC, TimeSpan.FromMilliseconds(timeoutMs));
+            wait.PollingInterval = TimeSpan.FromMilliseconds(250);
+            wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(StaleElementReferenceException));
+            return wait.Until(d => d.FindElement(by));
+        }
+
+        private static By BuildBy(string typeBy, string selector)
+        {
+            switch (typeBy.Trim().ToLowerInvariant())
+            {
+                case "id":
+                    return By.Id(selector);
+                case "linktext":
+                    return By.LinkText(selector);
+                case "css":
+                    return By.CssSelector(selector);
+                case "name":
+                    return By.Name(selector);
+                case "path":
+                case "data":
+                case "xp_hidden":
+                default:
+                    return By.XPath(selector);
             }
         }
 
@@ -252,6 +355,27 @@ namespace BIDVAutoVS2022
             }
 
             return bool.TryParse(value.ToString(), out bool result) ? result : defaultValue;
+        }
+
+        private static bool GetBoolValueFlexible(Dictionary<string, object?> dic, string key, bool defaultValue)
+        {
+            string value = GetStringValue(dic, key, defaultValue ? "true" : "false");
+            if (bool.TryParse(value, out bool boolValue))
+            {
+                return boolValue;
+            }
+
+            if (value == "1")
+            {
+                return true;
+            }
+
+            if (value == "0")
+            {
+                return false;
+            }
+
+            return defaultValue;
         }
 
         private static string ResolvePath(string path, string baseDir)
@@ -370,17 +494,6 @@ namespace BIDVAutoVS2022
             }
 
             return rows;
-        }
-
-        private static JsonRunResult ReadResultIfExists(string fixedResultPath)
-        {
-            if (!File.Exists(fixedResultPath))
-            {
-                return new JsonRunResult();
-            }
-
-            string content = File.ReadAllText(fixedResultPath);
-            return JsonSerializer.Deserialize<JsonRunResult>(content, JsonOptions) ?? new JsonRunResult();
         }
 
         private class JsonRunResult

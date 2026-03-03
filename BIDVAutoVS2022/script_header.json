@@ -3,11 +3,45 @@
     "name": "Mở trang đăng nhập",
     "type_by": "url",
     "order_by": 1,
-    "s_value": "https://example.com/login",
+    "s_value": "https://bpm-login-prd.bidv.com.vn/oidc/login.jsp",
     "input_value": "",
+    "begin_time_sleep": 500,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 300,
+    "hieuluc": true
+  },
+  {
+    "name": "Nhập user name",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "/html/body/div/div/div[1]/div/div[2]/form/div[2]/div/div/input",
+    "input_value": "164423",
+    "begin_time_sleep": 500,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 300,
+    "hieuluc": true
+  },
+  {
+    "name": "Nhập mật khẩu",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "//*[@id=\"password\"]",
+    "input_value": "Iware@quy126",
+    "begin_time_sleep": 500,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 300,
+    "hieuluc": true
+  },
+  {
+    "name": "Nhấn nút login",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "//*[@id=\"page-content\"]/div/div[1]/div/div[2]/form/button",
+    "input_value": "Iware@quy126",
     "begin_time_sleep": 500,
     "in_time_sleep": 1000,
     "end_time_sleep": 300,
     "hieuluc": true
   }
 ]
+
