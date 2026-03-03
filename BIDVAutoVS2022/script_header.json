@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Mở trang đăng nhập",
+    "type_by": "url",
+    "order_by": 1,
+    "s_value": "https://example.com/login",
+    "input_value": "",
+    "begin_time_sleep": 500,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 300,
+    "hieuluc": true
+  }
+]

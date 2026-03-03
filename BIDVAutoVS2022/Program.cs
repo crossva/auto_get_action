@@ -1030,6 +1030,14 @@ namespace BIDVAutoVS2022
             string online_version = ConfigurationManager.AppSettings["online_version"] ?? "0";
             string is_browse_chrome = ConfigurationManager.AppSettings["is_browse_chrome"] ?? "0" ;
             string che_do_chay_nhe_nhat = ConfigurationManager.AppSettings["che_do_chay_nhe_nhat"] ?? "0";
+            string connection_type = (ConfigurationManager.AppSettings["connection_type"] ?? "sql").Trim().ToLower();
+
+            if (connection_type == "json")
+            {
+                Logger.LogInfo("Chạy theo JSON mode (connection_type=json)");
+                JsonModeRunner.RunFromConfig();
+                return;
+            }
 
             string[] a_month = new string[12] { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
             DateTime dDate = DateTime.Now;

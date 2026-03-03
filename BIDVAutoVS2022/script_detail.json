@@ -1,0 +1,23 @@
+[
+  {
+    "name": "Nhập giá trị động",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "//*[@id='input_1']",
+    "input_value": "{{value1}}",
+    "begin_time_sleep": 200,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 200,
+    "hieuluc": true
+  },
+  {
+    "name": "Internal loop mẫu",
+    "type_by": "internal loop",
+    "order_by": 2,
+    "filename_script_internal_loop": "script_internal_loop.json",
+    "begin_time_sleep": 100,
+    "in_time_sleep": 500,
+    "end_time_sleep": 100,
+    "hieuluc": true
+  }
+]

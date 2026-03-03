@@ -1,0 +1,13 @@
+[
+  {
+    "name": "Bước loop 1",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "//*[@id='loop_1']",
+    "input_value": "{{value2}}",
+    "begin_time_sleep": 100,
+    "in_time_sleep": 500,
+    "end_time_sleep": 100,
+    "hieuluc": true
+  }
+]
