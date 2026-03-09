@@ -105,13 +105,14 @@ namespace BIDVAutoVS2022
                     }
                     catch (Exception ex)
                     {
+                        Logger.LogError($"[JSON CASE ERROR] STT={stt}", ex);
                         newItems.Add(new JsonRunItem
                         {
                             Id = stt,
                             Stt = stt,
                             LanChay = 1,
                             Status = "error",
-                            Message = ex.Message,
+                            Message = ex.ToString(),
                             MessageBefore = string.Empty
                         });
                         fail++;
@@ -340,8 +341,9 @@ namespace BIDVAutoVS2022
             {
                 select.SelectByValue(value);
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError($"[JSON SELECT FALLBACK] Không SelectByValue được với id={id}, value={value}. Chuyển sang tìm option thủ công.", ex);
                 var matched = select.Options.FirstOrDefault(o => string.Equals(o.GetAttribute("value")?.Trim(), value.Trim(), StringComparison.OrdinalIgnoreCase));
                 if (matched == null)
                 {
@@ -362,8 +364,9 @@ namespace BIDVAutoVS2022
                 select.SelectByValue(taxText);
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError($"[JSON TAXTYPE FALLBACK] SelectByValue thất bại với id={id}, tax={taxText}.", ex);
             }
 
             var option = select.Options.FirstOrDefault(o =>
@@ -393,8 +396,9 @@ namespace BIDVAutoVS2022
                 select.SelectByValue(inputValue);
                 return;
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError($"[JSON SELECT FALLBACK] SelectByValue thất bại với input={inputValue}.", ex);
             }
 
             var option = select.Options.FirstOrDefault(o => (o.Text ?? string.Empty).StartsWith(inputValue, StringComparison.OrdinalIgnoreCase));
@@ -530,8 +534,9 @@ namespace BIDVAutoVS2022
                 {
                     driverGC.SwitchTo().Frame(frames[frameIndex]);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Logger.LogError($"[JSON IFRAME] Không switch được vào iframe index={frameIndex} theo path nhớ.", ex);
                     _lastIframePath = null;
                     driverGC.SwitchTo().DefaultContent();
                     return false;
@@ -540,7 +545,18 @@ namespace BIDVAutoVS2022
 
             return true;
         }
+        private static void SelectByValueWithChange(IWebDriver driverGC, string selectId, string value)
+        {
+            var element = driverGC.FindElement(By.Id(selectId));
 
+            var select = new SelectElement(element);
+            select.SelectByValue(value);
+
+            ((IJavaScriptExecutor)driverGC).ExecuteScript(
+                "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                element
+            );
+        }
         private static bool TryFindInAllIframes(IWebDriver driverGC, By by, out IWebElement? foundElement)
         {
             driverGC.SwitchTo().DefaultContent();
@@ -573,8 +589,9 @@ namespace BIDVAutoVS2022
                 {
                     driverGC.SwitchTo().Frame(frames[i]);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Logger.LogError($"[JSON IFRAME] Không switch được vào iframe index={i} khi duyệt toàn bộ iframe.", ex);
                     continue;
                 }
 
@@ -605,8 +622,9 @@ namespace BIDVAutoVS2022
                 foundElement = elements[0];
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.LogError($"[JSON FIND] Lỗi khi tìm element {by}.", ex);
                 return false;
             }
         }
