@@ -222,5 +222,19 @@
     "begin_time_sleep": 1000,
     "in_time_sleep": 5000,
     "end_time_sleep": 1000
+  },
+  {
+    "name": "Nhập chi tiết hóa đơn",
+    "type_by": "detail_hd",
+    "order_by": 6,
+    "s_value": "",
+    "input_value": "",
+    "replace_value": "",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 1000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 1000
   }
 ]
