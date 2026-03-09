@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -24,9 +25,11 @@ namespace BIDVAutoVS2022
             WriteIndented = true,
             PropertyNameCaseInsensitive = true
         };
+        private static List<int>? _lastIframePath;
 
         public static void RunFromConfig()
         {
+            _lastIframePath = null;
             string baseDir = AppContext.BaseDirectory;
             string headerScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_header_script_path"] ?? "script_header.json", baseDir);
             string detailScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_detail_script_path"] ?? "script_detail.json", baseDir);
@@ -193,6 +196,7 @@ namespace BIDVAutoVS2022
                 if (!string.IsNullOrWhiteSpace(selector))
                 {
                     driverGC.Navigate().GoToUrl(selector);
+                    _lastIframePath = null;
                 }
                 return;
             }
@@ -200,6 +204,7 @@ namespace BIDVAutoVS2022
             if (string.Equals(typeBy, "switch_to_default", StringComparison.OrdinalIgnoreCase))
             {
                 driverGC.SwitchTo().DefaultContent();
+                _lastIframePath = null;
                 return;
             }
 
@@ -228,10 +233,6 @@ namespace BIDVAutoVS2022
             }
 
             By by = BuildBy(typeBy, selector);
-            bool ok = SwitchToFrameContainsElement(driverGC, by, inMs);
-            if (!ok)
-                throw new Exception("Không tìm thấy iframe chứa element");
-            var menu = WaitAndFindVisibleElement(driverGC, by, inMs);
             IWebElement element = WaitAndFindElement(driverGC, by, inMs);
 
             if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
@@ -259,21 +260,17 @@ namespace BIDVAutoVS2022
             string matHang = GetRowValue(rowValues, "mat_hang");
             string tenCb = GetRowValue(rowValues, "ten_cb");
             bool isQuaTang = IsOne(GetRowValue(rowValues, "is_qua_tang"));
-            int detailRowCount = GetExpenseDetailRowCount(driverGC, rowIndex);
-            if (detailRowCount <= 0)
-            {
-                detailRowCount = 1;
-            }
-
-            for (int detailIndex = 0; detailIndex < detailRowCount; detailIndex++)
+            bool foundAnyDetailRow = false;
+            for (int detailIndex = 0; ; detailIndex++)
             {
                 string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipProduct[{detailIndex}]:product";
                 string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipCustomerType[{detailIndex}]:customerType";
 
                 if (!ElementExistsById(driverGC, productSelectId) || !ElementExistsById(driverGC, customerSelectId))
                 {
-                    continue;
+                    break;
                 }
+                foundAnyDetailRow = true;
 
                 SelectDropdownByValue(driverGC, productSelectId, productValue, inMs);
                 SelectDropdownByValue(driverGC, customerSelectId, customerTypeValue, inMs);
@@ -306,6 +303,11 @@ namespace BIDVAutoVS2022
                     WaitAndFindElement(driverGC, By.Id("button-button-Button13"), inMs).Click();
                 }
             }
+
+            if (!foundAnyDetailRow)
+            {
+                throw new Exception($"Không tìm thấy dòng chi tiết nào trong expenseTbl của hóa đơn STT={rowIndex + 1}.");
+            }
         }
 
         private static int GetRowIndexFromStt(Dictionary<string, string> rowValues)
@@ -319,15 +321,9 @@ namespace BIDVAutoVS2022
             return 0;
         }
 
-        private static int GetExpenseDetailRowCount(IWebDriver driverGC, int rowIndex)
-        {
-            string xpath = $"//*[starts-with(@id,'singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipProduct[') and contains(@id,']:product')]";
-            return driverGC.FindElements(By.XPath(xpath)).Count;
-        }
-
         private static bool ElementExistsById(IWebDriver driverGC, string id)
         {
-            return driverGC.FindElements(By.Id(id)).Count > 0;
+            return TryFindElementWithFrameMemory(driverGC, By.Id(id), 200, out _);
         }
 
         private static void SelectDropdownByValue(IWebDriver driverGC, string id, string value, int inMs)
@@ -465,121 +461,154 @@ namespace BIDVAutoVS2022
             return parsed.Value;
         }
 
-        //private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int inMs)
-        //{
-        //    int timeoutMs = inMs > 0 ? inMs : 5000;
-        //    var wait = new WebDriverWait(driverGC, TimeSpan.FromMilliseconds(timeoutMs));
-        //    wait.PollingInterval = TimeSpan.FromMilliseconds(250);
-        //    wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(StaleElementReferenceException));
-        //    return wait.Until(d => d.FindElement(by));
-        //}
-        private static bool SwitchToFrameContainsElement(
-            IWebDriver driver,
-            By elementBy,
-            int timeoutMs = 10000)
+        private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int timeoutMs = 5000)
         {
-            var wait = new WebDriverWait(driver, TimeSpan.FromMilliseconds(timeoutMs));
-
-            return wait.Until(d =>
+            int effectiveTimeout = timeoutMs > 0 ? timeoutMs : 5000;
+            if (TryFindElementWithFrameMemory(driverGC, by, effectiveTimeout, out IWebElement? found))
             {
-                d.SwitchTo().DefaultContent();
+                return found!;
+            }
 
-                var frames = d.FindElements(By.TagName("iframe"));
+            throw new NoSuchElementException($"Không tìm thấy phần tử '{by}' sau {effectiveTimeout}ms (đã duyệt qua iframe).");
+        }
 
-                foreach (var frame in frames)
+        private static bool TryFindElementWithFrameMemory(IWebDriver driverGC, By by, int timeoutMs, out IWebElement? foundElement)
+        {
+            foundElement = null;
+            int effectiveTimeout = timeoutMs > 0 ? timeoutMs : 5000;
+            Stopwatch sw = Stopwatch.StartNew();
+
+            while (sw.ElapsedMilliseconds < effectiveTimeout)
+            {
+                if (TryFindInRememberedIframe(driverGC, by, out foundElement))
                 {
-                    try
-                    {
-                        d.SwitchTo().Frame(frame);
-
-                        var elements = d.FindElements(elementBy);
-
-                        if (elements.Count > 0)
-                        {
-                            return true;
-                        }
-
-                        d.SwitchTo().DefaultContent();
-                    }
-                    catch
-                    {
-                        d.SwitchTo().DefaultContent();
-                    }
+                    return true;
                 }
 
-                return false;
-            });
+                if (TryFindInAllIframes(driverGC, by, out foundElement))
+                {
+                    return true;
+                }
+
+                Thread.Sleep(250);
+            }
+
+            return false;
         }
-        private static void WaitAndSwitchToFrame(IWebDriver driver, By frameBy, int timeoutMs = 10000)
+
+        private static bool TryFindInRememberedIframe(IWebDriver driverGC, By by, out IWebElement? foundElement)
         {
-            var wait = new WebDriverWait(driver, TimeSpan.FromMilliseconds(timeoutMs))
+            foundElement = null;
+            if (!SwitchToRememberedIframe(driverGC))
             {
-                PollingInterval = TimeSpan.FromMilliseconds(250)
-            };
+                return false;
+            }
 
-            wait.IgnoreExceptionTypes(
-                typeof(NoSuchFrameException),
-                typeof(NoSuchElementException),
-                typeof(StaleElementReferenceException)
-            );
+            return TryFindInCurrentContext(driverGC, by, out foundElement);
+        }
 
-            wait.Until(d =>
+        private static bool SwitchToRememberedIframe(IWebDriver driverGC)
+        {
+            driverGC.SwitchTo().DefaultContent();
+
+            if (_lastIframePath == null || _lastIframePath.Count == 0)
             {
+                return true;
+            }
+
+            foreach (int frameIndex in _lastIframePath)
+            {
+                var frames = driverGC.FindElements(By.CssSelector("iframe,frame"));
+                if (frameIndex < 0 || frameIndex >= frames.Count)
+                {
+                    _lastIframePath = null;
+                    driverGC.SwitchTo().DefaultContent();
+                    return false;
+                }
+
                 try
                 {
-                    var frame = d.FindElement(frameBy);
-                    d.SwitchTo().Frame(frame);
-                    return true;
+                    driverGC.SwitchTo().Frame(frames[frameIndex]);
                 }
                 catch
                 {
+                    _lastIframePath = null;
+                    driverGC.SwitchTo().DefaultContent();
                     return false;
                 }
-            });
+            }
+
+            return true;
         }
-        private static IWebElement WaitAndFindVisibleElement(IWebDriver driverGC, By by, int timeoutMs = 10000)
+
+        private static bool TryFindInAllIframes(IWebDriver driverGC, By by, out IWebElement? foundElement)
         {
-            var wait = new WebDriverWait(driverGC, TimeSpan.FromMilliseconds(timeoutMs))
+            driverGC.SwitchTo().DefaultContent();
+            var path = new List<int>();
+            bool found = TryFindInAllIframesRecursive(driverGC, by, path, out foundElement, out List<int>? foundPath);
+            if (found)
             {
-                PollingInterval = TimeSpan.FromMilliseconds(250)
-            };
+                _lastIframePath = foundPath;
+                return true;
+            }
 
-            wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(StaleElementReferenceException));
+            return false;
+        }
 
-            return wait.Until(driver =>
+        private static bool TryFindInAllIframesRecursive(IWebDriver driverGC, By by, List<int> currentPath, out IWebElement? foundElement, out List<int>? foundPath)
+        {
+            foundElement = null;
+            foundPath = null;
+
+            if (TryFindInCurrentContext(driverGC, by, out foundElement))
+            {
+                foundPath = new List<int>(currentPath);
+                return true;
+            }
+
+            var frames = driverGC.FindElements(By.CssSelector("iframe,frame"));
+            for (int i = 0; i < frames.Count; i++)
             {
                 try
                 {
-                    var el = driver.FindElement(by);
-                    return (el != null && el.Displayed) ? el : null;
+                    driverGC.SwitchTo().Frame(frames[i]);
                 }
-                catch (NoSuchElementException)
+                catch
                 {
-                    return null;
+                    continue;
                 }
-                catch (StaleElementReferenceException)
+
+                currentPath.Add(i);
+                if (TryFindInAllIframesRecursive(driverGC, by, currentPath, out foundElement, out foundPath))
                 {
-                    return null;
+                    return true;
                 }
-            });
+
+                currentPath.RemoveAt(currentPath.Count - 1);
+                driverGC.SwitchTo().ParentFrame();
+            }
+
+            return false;
         }
-        private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int timeoutMs = 5000)
+
+        private static bool TryFindInCurrentContext(IWebDriver driverGC, By by, out IWebElement? foundElement)
         {
-            var wait = new WebDriverWait(driverGC, TimeSpan.FromMilliseconds(timeoutMs))
+            foundElement = null;
+            try
             {
-                PollingInterval = TimeSpan.FromMilliseconds(250)
-            };
+                var elements = driverGC.FindElements(by);
+                if (elements.Count == 0)
+                {
+                    return false;
+                }
 
-            wait.IgnoreExceptionTypes(
-                typeof(NoSuchElementException),
-                typeof(StaleElementReferenceException)
-            );
-
-            return wait.Until(driver =>
+                foundElement = elements[0];
+                return true;
+            }
+            catch
             {
-                var element = driver.FindElement(by);
-                return element.Displayed ? element : null;
-            });
+                return false;
+            }
         }
         private static By BuildBy(string typeBy, string selector)
         {
