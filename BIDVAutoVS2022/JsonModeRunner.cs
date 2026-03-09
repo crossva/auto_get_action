@@ -13,10 +13,7 @@ using ExcelDataReader;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
-<<<<<<< ours
 using System.Text.RegularExpressions;
-=======
->>>>>>> theirs
 
 namespace BIDVAutoVS2022
 {
@@ -55,17 +52,10 @@ namespace BIDVAutoVS2022
             Directory.CreateDirectory(folderDownloadCur);
             string tempProfile = Path.Combine(baseDir, "temp", "json_profile");
             Directory.CreateDirectory(tempProfile);
-<<<<<<< ours
 
             IWebDriver driverGC = null;
             Actions actions = null;
 
-=======
-
-            IWebDriver driverGC = null;
-            Actions actions = null;
-
->>>>>>> theirs
             bool headerDone = headerSteps.Count == 0;
             var newItems = new List<JsonRunItem>();
             int success = 0;
@@ -74,16 +64,10 @@ namespace BIDVAutoVS2022
             try
             {
                 driverGC = Program.GetWebDriver(isBrowseChrome, folderDownloadCur, version, versionFirerfox, onlineVersion, "0", "0", cheDoChayNheNhat, tempProfile);
-<<<<<<< ours
                 //driverGC.Manage().Window.Maximize();
                 actions = new Actions(driverGC);
 
 
-=======
-                driverGC.Manage().Window.Maximize();
-                actions = new Actions(driverGC);
-
->>>>>>> theirs
                 if (headerSteps.Count > 0)
                 {
                     ExecuteSteps(headerSteps, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), Path.GetDirectoryName(detailScriptPath) ?? baseDir, driverGC, actions);
@@ -194,25 +178,16 @@ namespace BIDVAutoVS2022
                     string selector = ResolveInputValue(GetStringValue(step, "s_value", ""), rowValues);
                     bool isClick = GetBoolValueFlexible(step, "is_click", false);
                     bool isClickAc = GetBoolValueFlexible(step, "is_click_ac", false);
-<<<<<<< ours
                     bool isClickGrid = GetBoolValueFlexible(step, "is_click_row", false);
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
                     ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, inputValue, inMs, isClick, isClickAc, isClickGrid);
-=======
-                    Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
-                    ExecuteUiStep(driverGC, actions, typeBy, selector, inputValue, inMs, isClick, isClickAc);
->>>>>>> theirs
                 }
 
                 SleepMs(endMs);
             }
         }
 
-<<<<<<< ours
         private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string inputValue, int inMs, bool isClick, bool isClickAc, bool isClickGrid)
-=======
-        private static void ExecuteUiStep(IWebDriver driverGC, Actions actions, string typeBy, string selector, string inputValue, int inMs, bool isClick, bool isClickAc)
->>>>>>> theirs
         {
             if (string.Equals(typeBy, "url", StringComparison.OrdinalIgnoreCase))
             {
@@ -228,7 +203,6 @@ namespace BIDVAutoVS2022
                 driverGC.SwitchTo().DefaultContent();
                 return;
             }
-<<<<<<< ours
             if (isClickGrid)
             {
                 decimal? targetNullable = ParseMoney(rowValues["so_tien"]);
@@ -259,26 +233,6 @@ namespace BIDVAutoVS2022
                 }
             }
 
-=======
-
-            By by = BuildBy(typeBy, selector);
-            IWebElement element = WaitAndFindElement(driverGC, by, inMs);
-
-            if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
-            {
-                element.Clear();
-                element.SendKeys(inputValue);
-            }
-
-            if (isClickAc)
-            {
-                actions.MoveToElement(element).Click().Perform();
-            }
-            else if (isClick || string.IsNullOrWhiteSpace(inputValue))
-            {
-                element.Click();
-            }
->>>>>>> theirs
         }
 
         private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int inMs)
@@ -310,7 +264,6 @@ namespace BIDVAutoVS2022
             }
         }
 
-<<<<<<< ours
         public static void SelectByPrefix(IWebDriver driver, string id, string prefix)
         {
             var select = new SelectElement(driver.FindElement(By.Id(id)));
@@ -324,8 +277,6 @@ namespace BIDVAutoVS2022
                 }
             }
         }
-=======
->>>>>>> theirs
         private static void WaitByInTime(int inMs)
         {
             if (inMs <= 0)
@@ -571,7 +522,6 @@ namespace BIDVAutoVS2022
 
             return rows;
         }
-<<<<<<< ours
         public static bool ClickRowByMoney(IWebDriver driver, decimal targetMoney, int maxScrollTries = 60)
         {
             var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
@@ -666,9 +616,6 @@ namespace BIDVAutoVS2022
 
             return null;
         }
-=======
-
->>>>>>> theirs
         private class JsonRunResult
         {
             [JsonPropertyName("thoi_gian")]
