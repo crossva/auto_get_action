@@ -37,10 +37,32 @@
     "type_by": "path",
     "order_by": 1,
     "s_value": "//*[@id=\"page-content\"]/div/div[1]/div/div[2]/form/button",
-    "input_value": "Iware@quy126",
+    "input_value": "",
     "begin_time_sleep": 500,
     "in_time_sleep": 1000,
     "end_time_sleep": 300,
+    "hieuluc": true
+  },
+  {
+    "name": "Truy cập tiếp đường dẫn",
+    "type_by": "url",
+    "order_by": 1,
+    "s_value": "https://bpm-prd.bidv.com.vn/baw-bawinst1/ProcessPortal",
+    "input_value": "",
+    "begin_time_sleep": 500,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 5000,
+    "hieuluc": true
+  },
+  {
+    "name": "Truy cập tiếp công việc của tôi",
+    "type_by": "url",
+    "order_by": 1,
+    "s_value": "https://bpm-prd.bidv.com.vn/baw-bawinst1/ProcessPortal/dashboards/SYSRP/1",
+    "input_value": "",
+    "begin_time_sleep": 5000,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 10000,
     "hieuluc": true
   }
 ]

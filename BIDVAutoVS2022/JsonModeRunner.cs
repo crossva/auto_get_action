@@ -13,6 +13,7 @@ using ExcelDataReader;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
+using System.Text.RegularExpressions;
 
 namespace BIDVAutoVS2022
 {
@@ -63,7 +64,7 @@ namespace BIDVAutoVS2022
             try
             {
                 driverGC = Program.GetWebDriver(isBrowseChrome, folderDownloadCur, version, versionFirerfox, onlineVersion, "0", "0", cheDoChayNheNhat, tempProfile);
-                driverGC.Manage().Window.Maximize();
+                //driverGC.Manage().Window.Maximize();
                 actions = new Actions(driverGC);
 
 
@@ -177,15 +178,16 @@ namespace BIDVAutoVS2022
                     string selector = ResolveInputValue(GetStringValue(step, "s_value", ""), rowValues);
                     bool isClick = GetBoolValueFlexible(step, "is_click", false);
                     bool isClickAc = GetBoolValueFlexible(step, "is_click_ac", false);
+                    bool isClickGrid = GetBoolValueFlexible(step, "is_click_row", false);
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
-                    ExecuteUiStep(driverGC, actions, typeBy, selector, inputValue, inMs, isClick, isClickAc);
+                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, inputValue, inMs, isClick, isClickAc, isClickGrid);
                 }
 
                 SleepMs(endMs);
             }
         }
 
-        private static void ExecuteUiStep(IWebDriver driverGC, Actions actions, string typeBy, string selector, string inputValue, int inMs, bool isClick, bool isClickAc)
+        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string inputValue, int inMs, bool isClick, bool isClickAc, bool isClickGrid)
         {
             if (string.Equals(typeBy, "url", StringComparison.OrdinalIgnoreCase))
             {
@@ -201,24 +203,36 @@ namespace BIDVAutoVS2022
                 driverGC.SwitchTo().DefaultContent();
                 return;
             }
-
-            By by = BuildBy(typeBy, selector);
-            IWebElement element = WaitAndFindElement(driverGC, by, inMs);
-
-            if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
+            if (isClickGrid)
             {
-                element.Clear();
-                element.SendKeys(inputValue);
+                decimal? targetNullable = ParseMoney(rowValues["so_tien"]);
+
+                if (!targetNullable.HasValue)
+                    throw new Exception($"Giá trị Số tiền không hợp lệ: '{inputValue}'");
+
+                decimal target = targetNullable.Value;
+                bool clicked = ClickRowByMoney(driverGC, target);
+            }
+            else
+            {
+                By by = BuildBy(typeBy, selector);
+                IWebElement element = WaitAndFindElement(driverGC, by, inMs);
+                if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
+                {
+                    element.Clear();
+                    element.SendKeys(inputValue);
+                }
+
+                if (isClickAc)
+                {
+                    actions.MoveToElement(element).Click().Perform();
+                }
+                else if (isClick || string.IsNullOrWhiteSpace(inputValue))
+                {
+                    element.Click();
+                }
             }
 
-            if (isClickAc)
-            {
-                actions.MoveToElement(element).Click().Perform();
-            }
-            else if (isClick || string.IsNullOrWhiteSpace(inputValue))
-            {
-                element.Click();
-            }
         }
 
         private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int inMs)
@@ -250,6 +264,19 @@ namespace BIDVAutoVS2022
             }
         }
 
+        public static void SelectByPrefix(IWebDriver driver, string id, string prefix)
+        {
+            var select = new SelectElement(driver.FindElement(By.Id(id)));
+
+            foreach (var option in select.Options)
+            {
+                if (option.Text.StartsWith(prefix))
+                {
+                    option.Click();
+                    return;
+                }
+            }
+        }
         private static void WaitByInTime(int inMs)
         {
             if (inMs <= 0)
@@ -495,7 +522,100 @@ namespace BIDVAutoVS2022
 
             return rows;
         }
+        public static bool ClickRowByMoney(IWebDriver driver, decimal targetMoney, int maxScrollTries = 60)
+        {
+            var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
 
+            // 1) Xác định container grid (lấy container body)
+            var gridContainer = wait.Until(d => d.FindElement(By.CssSelector("div.ui-grid-render-container-body")));
+
+            // 2) Tìm index cột "Số tiền" dựa trên header text
+            var headerCells = wait.Until(d => d.FindElements(By.CssSelector(".ui-grid-header-cell .ui-grid-cell-contents span.ng-binding")));
+            int moneyColIndex = -1;
+
+            for (int i = 0; i < headerCells.Count; i++)
+            {
+                var title = (headerCells[i].Text ?? "").Trim();
+                if (string.Equals(title, "Số tiền", StringComparison.OrdinalIgnoreCase))
+                {
+                    moneyColIndex = i-1;
+                    break;
+                }
+            }
+
+            if (moneyColIndex < 0)
+                throw new Exception("Không tìm thấy cột 'Số tiền' trong header ui-grid.");
+
+            // 3) Lấy viewport body để scroll
+            // ui-grid thường có viewport: .ui-grid-viewport / .ui-grid-render-container-body
+            var viewport = wait.Until(d => d.FindElement(By.CssSelector(".ui-grid-render-container-body")));
+
+            // 4) Duyệt theo từng “page render” + scroll xuống
+            // NOTE: ui-grid row thường có class .ui-grid-row
+            for (int scrollTry = 0; scrollTry < maxScrollTries; scrollTry++)
+            {
+                var rows = driver.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
+
+                foreach (var row in rows)
+                {
+                    // Các cell trong row
+                    var cells = row.FindElements(By.CssSelector(".ui-grid-cell"));
+
+                    if (cells == null || cells.Count <= moneyColIndex) continue;
+
+                    // Lấy text cell "Số tiền"
+                    var moneyText = cells[moneyColIndex].Text?.Trim() ?? "";
+                    var moneyVal = ParseMoney(moneyText);
+
+                    if (moneyVal.HasValue && moneyVal.Value == targetMoney)
+                    {
+                        // Scroll vào view rồi click
+                        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollIntoView({block:'center'});", row);
+
+                        // Click cả row (hoặc click cell số tiền)
+                        // row.Click();
+                        cells[moneyColIndex].Click();
+
+                        return true;
+                    }
+                }
+
+                // 5) Chưa thấy -> scroll xuống thêm (virtual scroll)
+                // Scroll viewport bằng JS để ui-grid render thêm rows
+                ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollTop = arguments[0].scrollTop + arguments[0].clientHeight;", viewport);
+
+                // Đợi chút để ui-grid render lại
+                Thread.Sleep(250);
+            }
+
+            return false;
+        }
+        private static decimal? ParseMoney(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+
+            // Bỏ ký tự không phải số, dấu phẩy, dấu chấm, dấu âm
+            raw = raw.Trim();
+
+            // UI hay có NBSP
+            raw = raw.Replace("\u00A0", " ");
+
+            // Giữ lại chỉ digits + , .
+            var cleaned = Regex.Replace(raw, @"[^\d\.,\-]", "");
+
+            if (string.IsNullOrWhiteSpace(cleaned)) return null;
+
+            // Trường hợp VN: 1.234.567 (dấu . là phân tách nghìn)
+            // Trường hợp EN: 1,234,567 (dấu , là phân tách nghìn)
+            // Ta xử lý: nếu có cả '.' và ',' thì đoán ',' là decimal (hiếm) -> bỏ nghìn.
+            // Ở thực tế tiền thường không có phần thập phân => chỉ remove thousand separators.
+            cleaned = cleaned.Replace(",", "").Replace(".", "");
+
+            if (decimal.TryParse(cleaned, NumberStyles.Number | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var val))
+                return val;
+
+            return null;
+        }
         private class JsonRunResult
         {
             [JsonPropertyName("thoi_gian")]

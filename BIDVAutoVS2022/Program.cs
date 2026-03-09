@@ -740,6 +740,7 @@ namespace BIDVAutoVS2022
             options.AddArgument("--test-type");
             options.AddArgument("--allow-running-insecure-content");
             options.AddArgument("--ignore-certificate-errors");
+            options.AddArgument("--start-maximized");
 
             //options.AddArgument(@"--user-data-dir=C:\Users\bidvadmin\AppData\Local\Google\Chrome\User Data");
             //options.AddArgument("--profile-directory=Default");
@@ -1250,7 +1251,7 @@ namespace BIDVAutoVS2022
                 /// 
                 Logger.LogInfo($"Khởi tạo ChromeDriver tại {DateTime.Now}");
                 driverGC = GetWebDriver(is_browse_chrome, FolderDownloadCur, version, version_firerfox, online_version, is_delete, import_config_auto_header_id, che_do_chay_nhe_nhat, tempProfile);
-                driverGC.Manage().Window.Maximize();
+                //driverGC.Manage().Window.Maximize();
                 Actions actions = new Actions(driverGC);
                 sql_execute = string.Format("update dv_ods_import_auto_get set state = 'confirm', note_lastest = note, ");
                 note_ = string.Format($"Đang lấy dữ liệu ..., Ghi chú {note_auto_header}");
