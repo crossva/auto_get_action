@@ -178,19 +178,21 @@ namespace BIDVAutoVS2022
                 {
                     string inputValue = ResolveInputValue(GetStringValue(step, "input_value", ""), rowValues);
                     string selector = ResolveInputValue(GetStringValue(step, "s_value", ""), rowValues);
+                    string replaceValue = ResolveInputValue(GetStringValue(step, "replace_value", ""), rowValues);
                     bool isClick = GetBoolValueFlexible(step, "is_click", false);
                     bool isClickAc = GetBoolValueFlexible(step, "is_click_ac", false);
                     bool isClickRow = GetBoolValueFlexible(step, "is_click_row", false);
+                    string sel_id = GetStringValue(step, "sel_id", "");
 
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
-                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, inputValue, inMs, isClick, isClickAc, isClickRow);
+                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow);
                 }
 
                 SleepMs(endMs);
             }
         }
 
-        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string inputValue, int inMs, bool isClick, bool isClickAc, bool isClickRow)
+        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow)
         {
             if (string.Equals(typeBy, "url", StringComparison.OrdinalIgnoreCase))
             {
@@ -217,8 +219,16 @@ namespace BIDVAutoVS2022
 
             if (string.Equals(typeBy, "sel", StringComparison.OrdinalIgnoreCase))
             {
-                IWebElement selectElement = WaitAndFindElement(driverGC, By.Id(selector), inMs);
-                SelectByValueOrPrefix(selectElement, inputValue);
+                if (!string.IsNullOrWhiteSpace(replaceValue))
+                {
+                    WaitAndFindElement(driverGC, By.XPath(selector), inMs);
+                    SetSelect2Value(driverGC, replaceValue, inputValue, inMs);
+                }
+                else
+                {
+                    WaitAndFindElement(driverGC, By.Id(sel_id), inMs);
+                    SetSelect2Value(driverGC, sel_id, inputValue, inMs);
+                }
                 return;
             }
 
@@ -380,6 +390,30 @@ namespace BIDVAutoVS2022
             }
 
             option.Click();
+        }
+
+        private static void SetSelect2Value(IWebDriver driverGC, string selectId, string value, int inMs)
+        {
+            IWebElement element = WaitAndFindElement(driverGC, By.Id(selectId), inMs);
+
+            try
+            {
+                var select = new SelectElement(element);
+                select.SelectByValue(value);
+
+                ((IJavaScriptExecutor)driverGC).ExecuteScript(
+                    "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));",
+                    element
+                );
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError($"[JSON SELECT2 FALLBACK] SelectByValue thất bại với selectId={selectId}, value={value}.", ex);
+                ((IJavaScriptExecutor)driverGC).ExecuteScript(@"
+                    arguments[0].value = arguments[1];
+                    arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+                ", element, value);
+            }
         }
 
         private static void SelectByValueOrPrefix(IWebElement element, string inputValue)
