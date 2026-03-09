@@ -234,7 +234,7 @@ namespace BIDVAutoVS2022
 
             if (isClickRow)
             {
-                decimal target = ParseMoneyRequired(GetRowValue(rowValues, "so_tien"), "so_tien");
+                decimal target = ParseMoneyRequired(GetRowValue(rowValues, "so_tien"), "so_tien", "vn");
                 bool clicked = ClickRowByMoney(driverGC, target);
                 if (!clicked)
                 {
@@ -249,6 +249,7 @@ namespace BIDVAutoVS2022
             if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
             {
                 element.Clear();
+                SleepMs(1000);
                 element.SendKeys(inputValue);
             }
 
@@ -274,8 +275,8 @@ namespace BIDVAutoVS2022
             bool foundAnyDetailRow = false;
             for (int detailIndex = 0; ; detailIndex++)
             {
-                string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipProduct[{detailIndex}]:product";
-                string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipCustomerType[{detailIndex}]:customerType";
+                string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipProduct[{rowIndex}]:product";
+                string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipCustomerType[{rowIndex}]:customerType";
 
                 if (!ElementExistsById(driverGC, productSelectId) || !ElementExistsById(driverGC, customerSelectId))
                 {
@@ -286,13 +287,13 @@ namespace BIDVAutoVS2022
                 SelectDropdownByValue(driverGC, productSelectId, productValue, inMs);
                 SelectDropdownByValue(driverGC, customerSelectId, customerTypeValue, inMs);
 
-                decimal expenseAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:Tooltip1[{detailIndex}]:expenseAmount", inMs);
-                decimal taxAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:Tooltip2[{detailIndex}]:taxAmount", inMs);
+                decimal expenseAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:Tooltip1[{rowIndex}]:expenseAmount", inMs);
+                decimal taxAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:Tooltip2[{rowIndex}]:taxAmount", inMs);
                 decimal expenseTaxAmount = expenseAmount + taxAmount;
 
-                int thueSuat = expenseAmount <= 0 ? 0 : (int)Math.Truncate((taxAmount / expenseAmount) * 100m);
+                int thueSuat = expenseAmount <= 0 ? 0 : (int)Math.Round((taxAmount / expenseAmount) * 100m);
 
-                string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{rowIndex}]:Tooltip1:Icon5";
+                string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{detailIndex}]:Tooltip1:Icon5";
                 WaitAndFindElement(driverGC, By.Id(detailBtnId), inMs).Click();
 
                 SetInputById(driverGC, "decimal-input-ViewInvoiceInDetail:revenueNoTax", FormatDecimal(expenseAmount), inMs);
@@ -300,10 +301,12 @@ namespace BIDVAutoVS2022
                 SetInputById(driverGC, "decimal-input-ViewInvoiceInDetail:totalInvoicePayment", FormatDecimal(expenseTaxAmount), inMs);
                 SetInputById(driverGC, "text-input-ViewInvoiceInDetail:itemName", matHang, inMs);
                 SetInputById(driverGC, "text-input-ViewInvoiceInDetail:buyer", tenCb, inMs);
-
+                string buton_xacnhan = $"/html/body/div[1]/div/div[4]/div/div/div/div[3]/div/div/div[1]/div/div/div/div[2]/div/div[2]/div/div[1]/button";
+                WaitAndFindElement(driverGC, By.XPath(buton_xacnhan), inMs).Click();
+                SleepMs(10000);
                 if (isQuaTang)
                 {
-                    string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{rowIndex}]:Icon3";
+                    string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{detailIndex}]:Icon3";
                     WaitAndFindElement(driverGC, By.Id(giftBtnId), inMs).Click();
 
                     WaitAndFindElement(driverGC, By.Id("radiogroup-item-input-TypeGiftedGoods[1]"), inMs).Click();
@@ -313,6 +316,7 @@ namespace BIDVAutoVS2022
                     SelectTaxType(driverGC, "singleselect-GiftGoods:taxType", thueSuat, inMs);
                     WaitAndFindElement(driverGC, By.Id("button-button-Button13"), inMs).Click();
                 }
+                SleepMs(8000);
             }
 
             if (!foundAnyDetailRow)
@@ -446,9 +450,14 @@ namespace BIDVAutoVS2022
         private static void SetInputById(IWebDriver driverGC, string id, string value, int inMs)
         {
             IWebElement element = WaitAndFindElement(driverGC, By.Id(id), inMs);
-            element.Clear();
             if (!string.IsNullOrWhiteSpace(value))
             {
+                SleepMs(1000);
+                element.Click();
+                element.SendKeys(Keys.Control + "a");
+                SleepMs(500);
+                element.SendKeys(Keys.Delete);
+                SleepMs(500);
                 element.SendKeys(value);
             }
         }
@@ -466,7 +475,7 @@ namespace BIDVAutoVS2022
                 raw = element.GetAttribute("data-lval");
             }
 
-            return ParseMoneyRequired(raw ?? string.Empty, id);
+            return ParseMoneyRequired(raw ?? string.Empty, id, "en");
         }
 
         private static string FormatDecimal(decimal value)
@@ -489,15 +498,24 @@ namespace BIDVAutoVS2022
             return rowValues.TryGetValue(key, out string? value) ? value ?? string.Empty : string.Empty;
         }
 
-        private static decimal ParseMoneyRequired(string raw, string fieldName)
+        private static decimal ParseMoneyRequired(string raw, string fieldName, string type_number)
         {
-            decimal? parsed = ParseMoney(raw);
+            decimal? parsed = ParseMoney_vn(raw);
+            if (type_number == "vn")
+            {
+                parsed = ParseMoney_vn(raw);
+            }
+            else
+            {
+                parsed = ParseMoney_en(raw);
+            }
             if (!parsed.HasValue)
             {
                 throw new Exception($"Không đọc được giá trị số tại '{fieldName}'. Giá trị nhận được: '{raw}'.");
             }
             return parsed.Value;
         }
+
 
         private static IWebElement WaitAndFindElement(IWebDriver driverGC, By by, int timeoutMs = 5000)
         {
@@ -918,7 +936,7 @@ namespace BIDVAutoVS2022
                         }
 
                         item[header] = colIndex < table.Columns.Count
-                            ? table.Rows[rowIndex][colIndex]?.ToString()?.Trim() ?? string.Empty
+                            ? NormalizeExcelCellValue(table.Rows[rowIndex][colIndex])
                             : string.Empty;
                     }
 
@@ -927,6 +945,61 @@ namespace BIDVAutoVS2022
             }
 
             return rows;
+        }
+
+        private static string NormalizeExcelCellValue(object? rawValue)
+        {
+            if (rawValue == null || rawValue == DBNull.Value)
+            {
+                return string.Empty;
+            }
+
+            if (rawValue is DateTime dt)
+            {
+                return dt.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+            }
+
+            string text = rawValue.ToString()?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            if (TryFormatDateString(text, out string normalizedDate))
+            {
+                return normalizedDate;
+            }
+
+            return text;
+        }
+
+        private static bool TryFormatDateString(string text, out string normalizedDate)
+        {
+            normalizedDate = string.Empty;
+
+            // Chỉ xử lý các chuỗi có mẫu ngày để tránh parse nhầm dữ liệu thường.
+            if (!Regex.IsMatch(text, @"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b"))
+            {
+                return false;
+            }
+
+            string[] formats = new[]
+            {
+                "d/M/yyyy", "dd/MM/yyyy", "d/M/yy", "dd/MM/yy",
+                "d-M-yyyy", "dd-MM-yyyy", "d-M-yy", "dd-MM-yy",
+                "d/M/yyyy H:m:s", "dd/MM/yyyy HH:mm:ss", "d/M/yyyy HH:mm:ss",
+                "d-M-yyyy H:m:s", "dd-MM-yyyy HH:mm:ss", "d-M-yyyy HH:mm:ss"
+            };
+
+            if (DateTime.TryParseExact(text, formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime dt)
+                || DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out dt)
+                || DateTime.TryParse(text, new CultureInfo("vi-VN"), DateTimeStyles.None, out dt))
+            {
+                normalizedDate = dt.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            return false;
         }
 
         private static bool ClickRowByMoney(IWebDriver driver, decimal targetMoney, int maxScrollTries = 60)
@@ -967,7 +1040,7 @@ namespace BIDVAutoVS2022
                     }
 
                     string moneyText = cells[moneyColIndex].Text?.Trim() ?? string.Empty;
-                    decimal? moneyVal = ParseMoney(moneyText);
+                    decimal? moneyVal = ParseMoney_vn(moneyText);
                     if (moneyVal.HasValue && moneyVal.Value == targetMoney)
                     {
                         ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollIntoView({block:'center'});", row);
@@ -983,7 +1056,7 @@ namespace BIDVAutoVS2022
             return false;
         }
 
-        private static decimal? ParseMoney(string raw)
+        private static decimal? ParseMoney_vn(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw))
             {
@@ -999,6 +1072,46 @@ namespace BIDVAutoVS2022
 
             cleaned = cleaned.Replace(",", string.Empty).Replace(".", string.Empty);
             if (decimal.TryParse(cleaned, NumberStyles.Number | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out decimal val))
+            {
+                return val;
+            }
+
+            return null;
+        }
+        private static decimal? ParseMoney_en(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return null;
+
+            string cleaned = raw.Trim().Replace("\u00A0", "");
+
+            // chỉ giữ số + . + , + -
+            cleaned = Regex.Replace(cleaned, @"[^\d\.,\-]", "");
+
+            if (string.IsNullOrWhiteSpace(cleaned))
+                return null;
+
+            // xử lý format VN: 3.009.260,00
+            if (cleaned.Contains(",") && cleaned.Contains("."))
+            {
+                cleaned = cleaned.Replace(".", ""); // bỏ thousand
+                cleaned = cleaned.Replace(",", "."); // đổi decimal
+            }
+            else if (cleaned.Contains(",") && !cleaned.Contains("."))
+            {
+                // trường hợp 3000,50
+                cleaned = cleaned.Replace(",", ".");
+            }
+            else
+            {
+                // trường hợp 3000.50 hoặc 3000
+            }
+
+            if (decimal.TryParse(
+                cleaned,
+                NumberStyles.Number | NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out decimal val))
             {
                 return val;
             }
