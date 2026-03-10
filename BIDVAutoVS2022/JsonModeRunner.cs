@@ -275,8 +275,8 @@ namespace BIDVAutoVS2022
             bool foundAnyDetailRow = false;
             for (int detailIndex = 0; ; detailIndex++)
             {
-                string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipProduct[{rowIndex}]:product";
-                string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipCustomerType[{rowIndex}]:customerType";
+                string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipProduct[{detailIndex}]:product";
+                string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipCustomerType[{detailIndex}]:customerType";
 
                 if (!ElementExistsById(driverGC, productSelectId) || !ElementExistsById(driverGC, customerSelectId))
                 {
@@ -284,16 +284,21 @@ namespace BIDVAutoVS2022
                 }
                 foundAnyDetailRow = true;
 
+                if (detailIndex >= 1)
+                {
+                    ScrollToElementById(driverGC, productSelectId, inMs);
+                }
+
                 SelectDropdownByValue(driverGC, productSelectId, productValue, inMs);
                 SelectDropdownByValue(driverGC, customerSelectId, customerTypeValue, inMs);
 
-                decimal expenseAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:Tooltip1[{rowIndex}]:expenseAmount", inMs);
-                decimal taxAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:Tooltip2[{rowIndex}]:taxAmount", inMs);
+                decimal expenseAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:Tooltip1[{detailIndex}]:expenseAmount", inMs);
+                decimal taxAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:Tooltip2[{detailIndex}]:taxAmount", inMs);
                 decimal expenseTaxAmount = expenseAmount + taxAmount;
 
                 int thueSuat = expenseAmount <= 0 ? 0 : (int)Math.Round((taxAmount / expenseAmount) * 100m);
 
-                string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{detailIndex}]:Tooltip1:Icon5";
+                string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{rowIndex}]:Tooltip1:Icon5";
                 WaitAndFindElement(driverGC, By.Id(detailBtnId), inMs).Click();
 
                 SetInputById(driverGC, "decimal-input-ViewInvoiceInDetail:revenueNoTax", FormatDecimal(expenseAmount), inMs);
@@ -306,7 +311,7 @@ namespace BIDVAutoVS2022
                 SleepMs(10000);
                 if (isQuaTang)
                 {
-                    string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{detailIndex}]:Icon3";
+                    string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{rowIndex}]:Icon3";
                     WaitAndFindElement(driverGC, By.Id(giftBtnId), inMs).Click();
 
                     WaitAndFindElement(driverGC, By.Id("radiogroup-item-input-TypeGiftedGoods[1]"), inMs).Click();
@@ -344,6 +349,7 @@ namespace BIDVAutoVS2022
         private static void SelectDropdownByValue(IWebDriver driverGC, string id, string value, int inMs)
         {
             IWebElement element = WaitAndFindElement(driverGC, By.Id(id), inMs);
+            ScrollToElement(driverGC, element);
             var select = new SelectElement(element);
 
             if (string.IsNullOrWhiteSpace(value))
@@ -399,6 +405,7 @@ namespace BIDVAutoVS2022
         private static void SetSelect2Value(IWebDriver driverGC, string selectId, string value, int inMs)
         {
             IWebElement element = WaitAndFindElement(driverGC, By.Id(selectId), inMs);
+            ScrollToElement(driverGC, element);
 
             try
             {
@@ -678,6 +685,28 @@ namespace BIDVAutoVS2022
             {
                 Logger.LogError($"[JSON FIND] Lỗi khi tìm element {by}.", ex);
                 return false;
+            }
+        }
+
+        private static void ScrollToElementById(IWebDriver driverGC, string id, int inMs)
+        {
+            IWebElement element = WaitAndFindElement(driverGC, By.Id(id), inMs);
+            ScrollToElement(driverGC, element);
+        }
+
+        private static void ScrollToElement(IWebDriver driverGC, IWebElement element)
+        {
+            try
+            {
+                ((IJavaScriptExecutor)driverGC).ExecuteScript(
+                    "arguments[0].scrollIntoView({block:'center', inline:'nearest'});",
+                    element
+                );
+                Thread.Sleep(120);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("[JSON SCROLL] Không thể scroll tới element.", ex);
             }
         }
         private static By BuildBy(string typeBy, string selector)
