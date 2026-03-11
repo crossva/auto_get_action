@@ -234,11 +234,23 @@ namespace BIDVAutoVS2022
 
             if (isClickRow)
             {
-                decimal target = ParseMoneyRequired(GetRowValue(rowValues, "so_tien"), "so_tien", "vn");
-                bool clicked = ClickRowByMoney(driverGC, target);
-                if (!clicked)
+                string transactionNo = (GetRowValue(rowValues, "so_giao_dich") ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(transactionNo))
                 {
-                    throw new Exception($"Không tìm thấy dòng có Số tiền = {target.ToString(CultureInfo.InvariantCulture)} trong grid.");
+                    bool clickedByTransaction = ClickRowByTransactionNo(driverGC, transactionNo);
+                    if (!clickedByTransaction)
+                    {
+                        throw new Exception($"Không tìm thấy dòng có Số chứng từ/Số giao dịch = '{transactionNo}' trong grid.");
+                    }
+                }
+                else
+                {
+                    decimal target = ParseMoneyRequired(GetRowValue(rowValues, "so_tien"), "so_tien", "vn");
+                    bool clickedByMoney = ClickRowByMoney(driverGC, target);
+                    if (!clickedByMoney)
+                    {
+                        throw new Exception($"Không tìm thấy dòng có Số tiền = {target.ToString(CultureInfo.InvariantCulture)} trong grid.");
+                    }
                 }
                 return;
             }
@@ -275,8 +287,8 @@ namespace BIDVAutoVS2022
             bool foundAnyDetailRow = false;
             for (int detailIndex = 0; ; detailIndex++)
             {
-                string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipProduct[{detailIndex}]:product";
-                string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:TooltipCustomerType[{detailIndex}]:customerType";
+                string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipProduct[0]:product";
+                string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipCustomerType[0]:customerType";
 
                 if (!ElementExistsById(driverGC, productSelectId) || !ElementExistsById(driverGC, customerSelectId))
                 {
@@ -292,13 +304,13 @@ namespace BIDVAutoVS2022
                 SelectDropdownByValue(driverGC, productSelectId, productValue, inMs);
                 SelectDropdownByValue(driverGC, customerSelectId, customerTypeValue, inMs);
 
-                decimal expenseAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:Tooltip1[{detailIndex}]:expenseAmount", inMs);
-                decimal taxAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{rowIndex}]:expenseTbl:Tooltip2[{detailIndex}]:taxAmount", inMs);
+                decimal expenseAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:Tooltip1[0]:expenseAmount", inMs);
+                decimal taxAmount = ReadDecimalInputById(driverGC, $"decimal-input-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:Tooltip2[0]:taxAmount", inMs);
                 decimal expenseTaxAmount = expenseAmount + taxAmount;
 
                 int thueSuat = expenseAmount <= 0 ? 0 : (int)Math.Round((taxAmount / expenseAmount) * 100m);
 
-                string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{rowIndex}]:Tooltip1:Icon5";
+                string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{detailIndex}]:Tooltip1:Icon5";
                 WaitAndFindElement(driverGC, By.Id(detailBtnId), inMs).Click();
 
                 SetInputById(driverGC, "decimal-input-ViewInvoiceInDetail:revenueNoTax", FormatDecimal(expenseAmount), inMs);
@@ -311,7 +323,7 @@ namespace BIDVAutoVS2022
                 SleepMs(10000);
                 if (isQuaTang)
                 {
-                    string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{rowIndex}]:Icon3";
+                    string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{detailIndex}]:Icon3";
                     WaitAndFindElement(driverGC, By.Id(giftBtnId), inMs).Click();
 
                     WaitAndFindElement(driverGC, By.Id("radiogroup-item-input-TypeGiftedGoods[1]"), inMs).Click();
@@ -1083,6 +1095,81 @@ namespace BIDVAutoVS2022
             }
 
             return false;
+        }
+
+        private static bool ClickRowByTransactionNo(IWebDriver driver, string targetTransactionNo, int maxScrollTries = 60)
+        {
+            if (string.IsNullOrWhiteSpace(targetTransactionNo))
+            {
+                return false;
+            }
+
+            var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
+            wait.Until(d => d.FindElement(By.CssSelector("div.ui-grid-render-container-body")));
+
+            var headerCells = wait.Until(d => d.FindElements(By.CssSelector(".ui-grid-header-cell .ui-grid-cell-contents span.ng-binding")));
+            int transactionColIndex = -1;
+
+            for (int i = 0; i < headerCells.Count; i++)
+            {
+                string title = NormalizeGridText(headerCells[i].Text);
+                if (string.Equals(title, "Số chứng từ", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(title, "Số giao dịch", StringComparison.OrdinalIgnoreCase))
+                {
+                    transactionColIndex = i - 1;
+                    break;
+                }
+            }
+
+            if (transactionColIndex < 0)
+            {
+                throw new Exception("Không tìm thấy cột 'Số chứng từ' hoặc 'Số giao dịch' trong header ui-grid.");
+            }
+
+            var viewport = wait.Until(d => d.FindElement(By.CssSelector(".ui-grid-render-container-body")));
+            string normalizedTarget = NormalizeGridText(targetTransactionNo);
+            string compactTarget = Regex.Replace(normalizedTarget, @"\s+", "");
+
+            for (int scrollTry = 0; scrollTry < maxScrollTries; scrollTry++)
+            {
+                var rows = driver.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
+
+                foreach (var row in rows)
+                {
+                    var cells = row.FindElements(By.CssSelector(".ui-grid-cell"));
+                    if (cells.Count <= transactionColIndex)
+                    {
+                        continue;
+                    }
+
+                    string transactionText = NormalizeGridText(cells[transactionColIndex].Text);
+                    string compactTransactionText = Regex.Replace(transactionText, @"\s+", "");
+
+                    if (string.Equals(transactionText, normalizedTarget, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(compactTransactionText, compactTarget, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollIntoView({block:'center'});", row);
+                        cells[transactionColIndex].Click();
+                        return true;
+                    }
+                }
+
+                ((IJavaScriptExecutor)driver).ExecuteScript("arguments[0].scrollTop = arguments[0].scrollTop + arguments[0].clientHeight;", viewport);
+                Thread.Sleep(250);
+            }
+
+            return false;
+        }
+
+        private static string NormalizeGridText(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            string cleaned = raw.Trim().Replace("\u00A0", " ");
+            return Regex.Replace(cleaned, @"\s+", " ");
         }
 
         private static decimal? ParseMoney_vn(string raw)
