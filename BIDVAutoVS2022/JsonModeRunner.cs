@@ -33,6 +33,7 @@ namespace BIDVAutoVS2022
             string baseDir = AppContext.BaseDirectory;
             string headerScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_header_script_path"] ?? "script_header.json", baseDir);
             string detailScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_detail_script_path"] ?? "script_detail.json", baseDir);
+            string middleScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_middle_script_path"] ?? "script_trung_gian.json", baseDir);
             string excelPath = ResolvePath(ConfigurationManager.AppSettings["json_data_source_path"] ?? "script_data.csv", baseDir);
             string resultFolder = ResolvePath(ConfigurationManager.AppSettings["json_result_folder"] ?? Path.Combine(baseDir, "json_result"), baseDir);
             string fixedResultPath = ResolvePath(ConfigurationManager.AppSettings["json_fixed_result_file"] ?? Path.Combine(resultFolder, "ket_qua.json"), baseDir);
@@ -41,6 +42,7 @@ namespace BIDVAutoVS2022
 
             var headerSteps = ReadScript(headerScriptPath);
             var detailSteps = ReadScript(detailScriptPath);
+            var middleSteps = File.Exists(middleScriptPath) ? ReadScript(middleScriptPath) : new List<Dictionary<string, object?>>();
             var inputRows = ReadInputRows(excelPath);
 
             string pathDownload = ConfigurationManager.AppSettings["path_download"] ?? Path.Combine(baseDir, "download");
@@ -75,49 +77,17 @@ namespace BIDVAutoVS2022
                     headerDone = true;
                 }
 
-                foreach (var row in inputRows)
-                {
-                    string stt = row.ContainsKey("stt") ? row["stt"] : string.Empty;
-                    if (string.IsNullOrWhiteSpace(stt))
-                    {
-                        continue;
-                    }
-
-                    string onOff = row.ContainsKey("on_off") ? row["on_off"] : "1";
-                    if (onOff != "1")
-                    {
-                        continue;
-                    }
-
-                    try
-                    {
-                        ExecuteSteps(detailSteps, row, Path.GetDirectoryName(detailScriptPath) ?? baseDir, driverGC, actions);
-                        newItems.Add(new JsonRunItem
-                        {
-                            Id = stt,
-                            Stt = stt,
-                            LanChay = 1,
-                            Status = "success",
-                            Message = $"Đã xử lý case STT={stt} bằng JSON mode ({detailSteps.Count} bước định nghĩa).",
-                            MessageBefore = string.Empty
-                        });
-                        success++;
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogError($"[JSON CASE ERROR] STT={stt}", ex);
-                        newItems.Add(new JsonRunItem
-                        {
-                            Id = stt,
-                            Stt = stt,
-                            LanChay = 1,
-                            Status = "error",
-                            Message = ex.ToString(),
-                            MessageBefore = string.Empty
-                        });
-                        fail++;
-                    }
-                }
+                ProcessByUiRowsThenMatchExcel(
+                    inputRows,
+                    detailSteps,
+                    middleSteps,
+                    Path.GetDirectoryName(detailScriptPath) ?? baseDir,
+                    driverGC,
+                    actions,
+                    newItems,
+                    ref success,
+                    ref fail
+                );
             }
             finally
             {
@@ -146,8 +116,218 @@ namespace BIDVAutoVS2022
             Logger.LogInfo($"Kết quả mới: {stampFile}");
         }
 
-        private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions)
+        private static void ProcessByUiRowsThenMatchExcel(
+            List<Dictionary<string, string>> inputRows,
+            List<Dictionary<string, object?>> detailSteps,
+            List<Dictionary<string, object?>> middleSteps,
+            string scriptDirectory,
+            IWebDriver driverGC,
+            Actions actions,
+            List<JsonRunItem> newItems,
+            ref int success,
+            ref int fail,
+            int maxScrollTries = 200)
         {
+            var activeRows = inputRows
+                .Where(row =>
+                {
+                    string stt = GetRowValue(row, "stt");
+                    string onOff = GetRowValue(row, "on_off");
+                    return !string.IsNullOrWhiteSpace(stt) && string.Equals(onOff, "1", StringComparison.OrdinalIgnoreCase);
+                })
+                .ToList();
+
+            var mapByTransaction = new Dictionary<string, Queue<Dictionary<string, string>>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in activeRows)
+            {
+                string soGiaoDich = GetRowValue(row, "so_giao_dich");
+                string key = NormalizeTransactionKey(soGiaoDich);
+                if (string.IsNullOrWhiteSpace(key))
+                {
+                    continue;
+                }
+
+                if (!mapByTransaction.TryGetValue(key, out Queue<Dictionary<string, string>>? queue))
+                {
+                    queue = new Queue<Dictionary<string, string>>();
+                    mapByTransaction[key] = queue;
+                }
+
+                queue.Enqueue(row);
+            }
+
+            var processedRows = new HashSet<Dictionary<string, string>>();
+            var processedUiKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var wait = new WebDriverWait(driverGC, TimeSpan.FromSeconds(20));
+            wait.Until(d => d.FindElement(By.CssSelector("div.ui-grid-render-container-body")));
+
+            int statusColIndex = GetGridColumnIndexByTitle(driverGC, "Trạng thái giao dịch");
+            if (statusColIndex < 0)
+            {
+                throw new Exception("Không tìm thấy cột 'Trạng thái giao dịch' trong header ui-grid.");
+            }
+
+            IWebElement viewport = wait.Until(d => d.FindElement(By.CssSelector(".ui-grid-render-container-body")));
+            int scrollTry = 0;
+
+            while (scrollTry < maxScrollTries)
+            {
+                bool handledInCurrentViewport = false;
+                var rows = driverGC.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
+
+                for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+                {
+                    var currentRows = driverGC.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
+                    if (rowIndex >= currentRows.Count)
+                    {
+                        break;
+                    }
+
+                    IWebElement rowElement = currentRows[rowIndex];
+                    var cells = rowElement.FindElements(By.CssSelector(".ui-grid-cell"));
+                    if (cells.Count <= statusColIndex)
+                    {
+                        continue;
+                    }
+
+                    string statusText = NormalizeGridText(cells[statusColIndex].Text);
+                    if (!string.Equals(statusText, "Khởi tạo giao dịch", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string beforeCode = ReadCurrentProposalCode(driverGC, 400);
+                    ((IJavaScriptExecutor)driverGC).ExecuteScript("arguments[0].scrollIntoView({block:'center'});", rowElement);
+                    try
+                    {
+                        cells[0].Click();
+                    }
+                    catch
+                    {
+                        rowElement.Click();
+                    }
+
+                    string currentProposalCode = WaitForProposalCodeAfterRowClick(driverGC, beforeCode, 2500);
+                    string proposalKey = NormalizeTransactionKey(currentProposalCode);
+                    string uiProcessKey = !string.IsNullOrWhiteSpace(proposalKey)
+                        ? $"P:{proposalKey}"
+                        : $"R:{NormalizeGridText(rowElement.Text)}";
+
+                    if (processedUiKeys.Contains(uiProcessKey))
+                    {
+                        continue;
+                    }
+
+                    if (mapByTransaction.TryGetValue(proposalKey, out Queue<Dictionary<string, string>>? excelQueue)
+                        && excelQueue.Count > 0)
+                    {
+                        Dictionary<string, string> matchedExcelRow = excelQueue.Dequeue();
+                        string stt = GetRowValue(matchedExcelRow, "stt");
+
+                        try
+                        {
+                            ExecuteSteps(detailSteps, matchedExcelRow, scriptDirectory, driverGC, actions, skipFirstClickRow: true);
+                            newItems.Add(new JsonRunItem
+                            {
+                                Id = stt,
+                                Stt = stt,
+                                LanChay = 1,
+                                Status = "success",
+                                Message = $"Đã xử lý case STT={stt} theo dòng UI có trạng thái 'Khởi tạo giao dịch'.",
+                                MessageBefore = string.Empty
+                            });
+                            success++;
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError($"[JSON CASE ERROR] STT={stt}; so_giao_dich={GetRowValue(matchedExcelRow, "so_giao_dich")}", ex);
+                            newItems.Add(new JsonRunItem
+                            {
+                                Id = stt,
+                                Stt = stt,
+                                LanChay = 1,
+                                Status = "error",
+                                Message = ex.ToString(),
+                                MessageBefore = string.Empty
+                            });
+                            fail++;
+                        }
+
+                        processedRows.Add(matchedExcelRow);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (middleSteps.Count > 0)
+                            {
+                                ExecuteSteps(middleSteps, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase), scriptDirectory, driverGC, actions, skipFirstClickRow: true);
+                                Logger.LogInfo($"[JSON MIDDLE] Không thấy so_giao_dich='{currentProposalCode}' trong Excel. Đã chạy script_trung_gian.json.");
+                            }
+                            else
+                            {
+                                Logger.LogInfo($"[JSON MIDDLE] Không thấy so_giao_dich='{currentProposalCode}' trong Excel nhưng chưa có step trung gian.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogError($"[JSON MIDDLE ERROR] Lỗi chạy script_trung_gian khi không khớp Excel. proposalCode='{currentProposalCode}'", ex);
+                        }
+                        continue;
+                    }
+
+                    processedUiKeys.Add(uiProcessKey);
+                    handledInCurrentViewport = true;
+                    break;
+                }
+
+                if (handledInCurrentViewport)
+                {
+                    continue;
+                }
+
+                double prevTop = Convert.ToDouble(((IJavaScriptExecutor)driverGC).ExecuteScript("return arguments[0].scrollTop;", viewport), CultureInfo.InvariantCulture);
+                ((IJavaScriptExecutor)driverGC).ExecuteScript("arguments[0].scrollTop = arguments[0].scrollTop + arguments[0].clientHeight;", viewport);
+                Thread.Sleep(300);
+                double newTop = Convert.ToDouble(((IJavaScriptExecutor)driverGC).ExecuteScript("return arguments[0].scrollTop;", viewport), CultureInfo.InvariantCulture);
+
+                if (newTop <= prevTop + 1)
+                {
+                    break;
+                }
+
+                scrollTry++;
+            }
+
+            foreach (var row in activeRows)
+            {
+                if (processedRows.Contains(row))
+                {
+                    continue;
+                }
+
+                string stt = GetRowValue(row, "stt");
+                string soGiaoDich = GetRowValue(row, "so_giao_dich");
+                string message = string.IsNullOrWhiteSpace(soGiaoDich)
+                    ? "Bỏ qua vì không có so_giao_dich để đối soát ngược từ UI."
+                    : $"Không tìm thấy dòng UI trạng thái 'Khởi tạo giao dịch' khớp so_giao_dich='{soGiaoDich}'.";
+
+                newItems.Add(new JsonRunItem
+                {
+                    Id = stt,
+                    Stt = stt,
+                    LanChay = 1,
+                    Status = "error",
+                    Message = message,
+                    MessageBefore = string.Empty
+                });
+                fail++;
+            }
+        }
+
+        private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions, bool skipFirstClickRow = false)
+        {
+            bool hasSkippedClickRow = false;
             foreach (var step in steps.OrderBy(x => GetIntValue(x, "order_by", 0)))
             {
                 if (!GetBoolValue(step, "hieuluc", true))
@@ -184,12 +364,37 @@ namespace BIDVAutoVS2022
                     bool isClickRow = GetBoolValueFlexible(step, "is_click_row", false);
                     string sel_id = GetStringValue(step, "sel_id", "");
 
+                    if (skipFirstClickRow && !hasSkippedClickRow && isClickRow)
+                    {
+                        Logger.LogInfo($"[JSON STEP] Bỏ qua step is_click_row vì dòng UI đã được chọn trước. name={stepName}");
+                        hasSkippedClickRow = true;
+                        SleepMs(endMs);
+                        continue;
+                    }
+
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
                     ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow);
                 }
 
                 SleepMs(endMs);
             }
+        }
+
+        private static int GetGridColumnIndexByTitle(IWebDriver driver, string columnTitle)
+        {
+            var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
+            var headerCells = wait.Until(d => d.FindElements(By.CssSelector(".ui-grid-header-cell .ui-grid-cell-contents span.ng-binding")));
+
+            for (int i = 0; i < headerCells.Count; i++)
+            {
+                string title = NormalizeGridText(headerCells[i].Text);
+                if (string.Equals(title, columnTitle, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i - 1;
+                }
+            }
+
+            return -1;
         }
 
         private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow)
@@ -1170,6 +1375,54 @@ namespace BIDVAutoVS2022
 
             string cleaned = raw.Trim().Replace("\u00A0", " ");
             return Regex.Replace(cleaned, @"\s+", " ");
+        }
+
+        private static string NormalizeTransactionKey(string raw)
+        {
+            return NormalizeGridText(raw).Replace(" ", string.Empty).ToUpperInvariant();
+        }
+
+        private static string ReadCurrentProposalCode(IWebDriver driver, int timeoutMs)
+        {
+            IWebElement? proposalInput;
+            if (TryFindElementWithFrameMemory(driver, By.Id("text-input-businessGeneralInfo:proposalCode"), timeoutMs, out proposalInput)
+                || TryFindElementWithFrameMemory(driver, By.XPath("//*[@id='text-input-businessGeneralInfo:proposalCode']"), timeoutMs, out proposalInput))
+            {
+                string value = proposalInput?.GetAttribute("value") ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+
+                return proposalInput?.Text?.Trim() ?? string.Empty;
+            }
+
+            return string.Empty;
+        }
+
+        private static string WaitForProposalCodeAfterRowClick(IWebDriver driver, string beforeCode, int timeoutMs)
+        {
+            string normalizedBefore = NormalizeGridText(beforeCode);
+            string lastRead = beforeCode ?? string.Empty;
+            Stopwatch sw = Stopwatch.StartNew();
+
+            while (sw.ElapsedMilliseconds < timeoutMs)
+            {
+                string current = ReadCurrentProposalCode(driver, 300);
+                if (!string.IsNullOrWhiteSpace(current))
+                {
+                    lastRead = current;
+                    string normalizedCurrent = NormalizeGridText(current);
+                    if (!string.Equals(normalizedCurrent, normalizedBefore, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return current;
+                    }
+                }
+
+                Thread.Sleep(120);
+            }
+
+            return lastRead;
         }
 
         private static decimal? ParseMoney_vn(string raw)
