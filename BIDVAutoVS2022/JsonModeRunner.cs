@@ -68,7 +68,14 @@ namespace BIDVAutoVS2022
             try
             {
                 driverGC = Program.GetWebDriver(isBrowseChrome, folderDownloadCur, version, versionFirerfox, onlineVersion, "0", "0", cheDoChayNheNhat, tempProfile);
-                driverGC.Manage().Window.Maximize();
+                try
+                {
+                    driverGC.Manage().Window.Maximize();
+                }
+                catch
+                {
+                    // bỏ qua nếu đã maximize
+                }
                 actions = new Actions(driverGC);
 
                 if (headerSteps.Count > 0)
@@ -207,18 +214,23 @@ namespace BIDVAutoVS2022
                         rowElement.Click();
                     }
 
-                    string currentProposalCode = WaitForProposalCodeAfterRowClick(driverGC, beforeCode, 2500);
-                    string proposalKey = NormalizeTransactionKey(currentProposalCode);
-                    string uiProcessKey = !string.IsNullOrWhiteSpace(proposalKey)
-                        ? $"P:{proposalKey}"
-                        : $"R:{NormalizeGridText(rowElement.Text)}";
+                    string currentProposalCode = WaitForProposalCodeAfterRowClick(driverGC, beforeCode, 3500);
+                    SleepMs(500);
+                    IWebElement elements_temp = WaitAndFindElement(driverGC, By.XPath("//*[@id=\"HptBreadcrumb-item-HPTBreadcrumbs1[0]\"]"), 10000);
+                    elements_temp.Click();
+                    wait = new WebDriverWait(driverGC, TimeSpan.FromSeconds(10));
+
+                    var element = wait.Until(d =>
+                        d.FindElement(By.Id("text-input-businessGeneralInfo:proposalCode"))
+                    );
+                    string uiProcessKey = element.GetAttribute("value");
 
                     if (processedUiKeys.Contains(uiProcessKey))
                     {
                         continue;
                     }
 
-                    if (mapByTransaction.TryGetValue(proposalKey, out Queue<Dictionary<string, string>>? excelQueue)
+                    if (mapByTransaction.TryGetValue(uiProcessKey, out Queue<Dictionary<string, string>>? excelQueue)
                         && excelQueue.Count > 0)
                     {
                         Dictionary<string, string> matchedExcelRow = excelQueue.Dequeue();
@@ -362,6 +374,7 @@ namespace BIDVAutoVS2022
                     bool isClick = GetBoolValueFlexible(step, "is_click", false);
                     bool isClickAc = GetBoolValueFlexible(step, "is_click_ac", false);
                     bool isClickRow = GetBoolValueFlexible(step, "is_click_row", false);
+                    bool isScrollCheck = GetBoolValueFlexible(step, "is_scroll_check", false);
                     string sel_id = GetStringValue(step, "sel_id", "");
 
                     if (skipFirstClickRow && !hasSkippedClickRow && isClickRow)
@@ -373,7 +386,7 @@ namespace BIDVAutoVS2022
                     }
 
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
-                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow);
+                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
                 }
 
                 SleepMs(endMs);
@@ -397,7 +410,7 @@ namespace BIDVAutoVS2022
             return -1;
         }
 
-        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow)
+        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
         {
             if (string.Equals(typeBy, "url", StringComparison.OrdinalIgnoreCase))
             {
@@ -458,6 +471,11 @@ namespace BIDVAutoVS2022
                     }
                 }
                 return;
+            }
+
+            if (isScrollCheck && !string.IsNullOrWhiteSpace(selector))
+            {
+                ScrollCheckToElementByXPath(driverGC, selector, inMs);
             }
 
             By by = BuildBy(typeBy, selector);
@@ -525,11 +543,12 @@ namespace BIDVAutoVS2022
                 SetInputById(driverGC, "text-input-ViewInvoiceInDetail:buyer", tenCb, inMs);
                 string buton_xacnhan = $"/html/body/div[1]/div/div[4]/div/div/div/div[3]/div/div/div[1]/div/div/div/div[2]/div/div[2]/div/div[1]/button";
                 WaitAndFindElement(driverGC, By.XPath(buton_xacnhan), inMs).Click();
-                SleepMs(10000);
+                WaitAndFindElement(driverGC, By.XPath("//*[@id=\"button-button-TemplateButton1:submit1\"]"), 10000);
+                //SleepMs(10000);
                 if (isQuaTang)
                 {
                     string giftBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:goodGifts[{detailIndex}]:Icon3";
-                    WaitAndFindElement(driverGC, By.Id(giftBtnId), inMs).Click();
+                    ScrollToElementAndClick(driverGC, WaitAndFindElement(driverGC, By.Id(giftBtnId), inMs));
 
                     WaitAndFindElement(driverGC, By.Id("radiogroup-item-input-TypeGiftedGoods[1]"), inMs).Click();
                     SetInputById(driverGC, "decimal-input-GiftGoods:CommodityValue", FormatDecimal(expenseAmount), inMs);
@@ -538,13 +557,26 @@ namespace BIDVAutoVS2022
                     SelectTaxType(driverGC, "singleselect-GiftGoods:taxType", thueSuat, inMs);
                     WaitAndFindElement(driverGC, By.Id("button-button-Button13"), inMs).Click();
                 }
-                SleepMs(8000);
+                WaitAndFindElement(driverGC, By.XPath("//*[@id=\"button-button-TemplateButton1:submit1\"]"), 10000);
+                //SleepMs(8000);
             }
 
             if (!foundAnyDetailRow)
             {
                 throw new Exception($"Không tìm thấy dòng chi tiết nào trong expenseTbl của hóa đơn STT={rowIndex + 1}.");
             }
+        }
+
+        public static IWebElement ScrollToElementAndClick(IWebDriver driver, IWebElement element)
+        {
+            IJavaScriptExecutor js = (IJavaScriptExecutor)driver;
+
+            js.ExecuteScript(
+                "arguments[0].scrollIntoView({block: 'center', inline: 'center'});",
+                element
+            );
+            element.Click();
+            return element;
         }
 
         private static int GetRowIndexFromStt(Dictionary<string, string> rowValues)
@@ -757,8 +789,10 @@ namespace BIDVAutoVS2022
             foundElement = null;
             int effectiveTimeout = timeoutMs > 0 ? timeoutMs : 5000;
             Stopwatch sw = Stopwatch.StartNew();
-
-            while (sw.ElapsedMilliseconds < effectiveTimeout)
+            int count_loop = 0;
+            int sleep = 250;
+            int total_time = 0;
+            while (total_time < effectiveTimeout)
             {
                 if (TryFindInRememberedIframe(driverGC, by, out foundElement))
                 {
@@ -769,7 +803,8 @@ namespace BIDVAutoVS2022
                 {
                     return true;
                 }
-
+                count_loop++;
+                total_time = count_loop * sleep;
                 Thread.Sleep(250);
             }
 
@@ -909,6 +944,44 @@ namespace BIDVAutoVS2022
         {
             IWebElement element = WaitAndFindElement(driverGC, By.Id(id), inMs);
             ScrollToElement(driverGC, element);
+        }
+
+        private static void ScrollToElementByXPath(IWebDriver driverGC, string xpath, int inMs)
+        {
+            IWebElement element = WaitAndFindElement(driverGC, By.XPath(xpath), inMs);
+            ScrollToElement(driverGC, element);
+        }
+
+        private static void ScrollCheckToElementByXPath(IWebDriver driverGC, string xpath, int inMs, int maxScrollTries = 60)
+        {
+            int timeoutMs = inMs > 0 ? inMs : 5000;
+            Stopwatch sw = Stopwatch.StartNew();
+            int scrollTries = 0;
+
+            while (sw.ElapsedMilliseconds < timeoutMs && scrollTries < maxScrollTries)
+            {
+                if (TryFindElementWithFrameMemory(driverGC, By.XPath(xpath), 800, out IWebElement? foundElement))
+                {
+                    ScrollToElement(driverGC, foundElement!);
+                    return;
+                }
+
+                driverGC.SwitchTo().DefaultContent();
+                try
+                {
+                    ((IJavaScriptExecutor)driverGC).ExecuteScript("window.scrollBy(0, Math.max(window.innerHeight * 0.8, 320));");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError("[JSON SCROLL CHECK] Lỗi khi scroll page để tìm xpath.", ex);
+                }
+
+                Thread.Sleep(160);
+                scrollTries++;
+            }
+
+            // Nếu không tìm thấy trong vòng lặp, để hành vi đồng nhất với luồng hiện tại, thử tìm lần cuối để ném lỗi chuẩn.
+            ScrollToElementByXPath(driverGC, xpath, Math.Max(timeoutMs, 1500));
         }
 
         private static void ScrollToElement(IWebDriver driverGC, IWebElement element)
