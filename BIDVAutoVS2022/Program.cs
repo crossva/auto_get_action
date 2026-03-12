@@ -158,6 +158,11 @@ namespace BIDVAutoVS2022
             string note_ = "";
             IJavaScriptExecutor js = (IJavaScriptExecutor)driverGC;
             IWebElement curElement;
+            type_by = (type_by ?? "").Trim().ToLower();
+            if (type_by == "btn")
+            {
+                type_by = "path";
+            }
             if (type_by == "id")
             {
                 Thread.Sleep(Convert.ToInt32(begin_time_sleep));
@@ -568,6 +573,15 @@ namespace BIDVAutoVS2022
                     Thread.Sleep(1000);
                     return false;
                 }
+            }
+            else
+            {
+                sql_execute = string.Format("update dv_ods_import_auto_get set state = 'draft', ");
+                note_ = string.Format("Lỗi tại bước {0}, type_by '{1}' chưa được hỗ trợ", order_by, type_by.Replace("'", "''"));
+                sql_execute += string.Format(" note = '{0}'", note_);
+                sql_execute += string.Format(" where id = {0}", ods_import_auto_get_id);
+                common_sql.ExecuteNoneQueryPostgree(sql_execute, server, port, database_name).ToString();
+                return false;
             }
             return bResult;
         }
@@ -1299,11 +1313,41 @@ namespace BIDVAutoVS2022
                             {
                                 int debug_h = 1;
                             }    
-                            bool bresult = ActrionOneStep(ref driverGC, ref actions, ref i, ref s_result_data,
-                                type_by, begin_time_sleep, in_time_sleep, end_time_sleep,
-                                s_value, order_by, ods_import_auto_get_id,
-                                server, port, database_name,
-                                is_click, input_value, is_click_ac, is_data, sql_finish, is_popup_download, FolderDownloadCur);
+                            bool bresult = false;
+                            Exception? lastStepException = null;
+                            for (int attempt = 1; attempt <= 2; attempt++)
+                            {
+                                try
+                                {
+                                    bresult = ActrionOneStep(ref driverGC, ref actions, ref i, ref s_result_data,
+                                        type_by, begin_time_sleep, in_time_sleep, end_time_sleep,
+                                        s_value, order_by, ods_import_auto_get_id,
+                                        server, port, database_name,
+                                        is_click, input_value, is_click_ac, is_data, sql_finish, is_popup_download, FolderDownloadCur);
+                                    if (bresult)
+                                    {
+                                        break;
+                                    }
+
+                                    Logger.LogInfo($"[STEP RETRY] Bước {order_by} không thực hiện được ở lần {attempt}/2.");
+                                }
+                                catch (Exception exStep)
+                                {
+                                    lastStepException = exStep;
+                                    Logger.LogError($"[STEP RETRY] Bước {order_by} lỗi ở lần {attempt}/2.", exStep);
+                                }
+
+                                if (attempt < 2)
+                                {
+                                    Thread.Sleep(1000);
+                                }
+                            }
+
+                            if (!bresult && lastStepException != null)
+                            {
+                                throw new Exception($"Không thực hiện được bước {order_by} sau 2 lần thử.", lastStepException);
+                            }
+
                             if (bresult == false)
                             {
                                 if (quit_browse == "1")

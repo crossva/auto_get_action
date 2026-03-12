@@ -298,7 +298,8 @@ namespace BIDVAutoVS2022
                     continue;
                 }
 
-                double prevTop = Convert.ToDouble(((IJavaScriptExecutor)driverGC).ExecuteScript("return arguments[0].scrollTop;", viewport), CultureInfo.InvariantCulture);
+                By viewportBy = By.CssSelector(".ui-grid-render-container-body");
+                double prevTop = GetScrollTopSafe(driverGC, viewportBy);
                 ((IJavaScriptExecutor)driverGC).ExecuteScript("arguments[0].scrollTop = arguments[0].scrollTop + arguments[0].clientHeight;", viewport);
                 Thread.Sleep(300);
                 double newTop = Convert.ToDouble(((IJavaScriptExecutor)driverGC).ExecuteScript("return arguments[0].scrollTop;", viewport), CultureInfo.InvariantCulture);
@@ -335,6 +336,14 @@ namespace BIDVAutoVS2022
                 });
                 fail++;
             }
+        }
+        public static double GetScrollTopSafe(IWebDriver driver, By by, int timeoutMs = 5000)
+        {
+            IWebElement element = WaitAndFindElement(driver, by, timeoutMs);
+
+            object result = ((IJavaScriptExecutor)driver).ExecuteScript("return arguments[0] ? arguments[0].scrollTop : 0;", element);
+
+            return Convert.ToDouble(result, CultureInfo.InvariantCulture);
         }
 
         private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions, bool skipFirstClickRow = false)
@@ -386,11 +395,37 @@ namespace BIDVAutoVS2022
                     }
 
                     Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
-                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                    bool stepExecuted = ExecuteUiStepWithRetry(stepName, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                    if (!stepExecuted)
+                    {
+                        Logger.LogInfo($"[JSON STEP SKIP] Step '{stepName}' không thực hiện được sau 2 lần thử, chuyển sang step tiếp theo.");
+                    }
                 }
 
                 SleepMs(endMs);
             }
+        }
+
+        private static bool ExecuteUiStepWithRetry(string stepName, Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
+        {
+            for (int attempt = 1; attempt <= 2; attempt++)
+            {
+                try
+                {
+                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"[JSON STEP RETRY] Step '{stepName}' lỗi ở lần {attempt}/2.", ex);
+                    if (attempt < 2)
+                    {
+                        SleepMs(1000);
+                    }
+                }
+            }
+
+            return false;
         }
 
         private static int GetGridColumnIndexByTitle(IWebDriver driver, string columnTitle)
@@ -1015,8 +1050,9 @@ namespace BIDVAutoVS2022
                 case "path":
                 case "data":
                 case "xp_hidden":
-                default:
                     return By.XPath(selector);
+                default:
+                    throw new NotSupportedException($"type_by '{typeBy}' chưa được hỗ trợ.");
             }
         }
 
