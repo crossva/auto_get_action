@@ -165,6 +165,7 @@ namespace BIDVAutoVS2022
 
             var processedRows = new HashSet<Dictionary<string, string>>();
             var processedUiKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var processedTransactionKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var wait = new WebDriverWait(driverGC, TimeSpan.FromSeconds(20));
             wait.Until(d => d.FindElement(By.CssSelector("div.ui-grid-render-container-body")));
 
@@ -172,6 +173,12 @@ namespace BIDVAutoVS2022
             if (statusColIndex < 0)
             {
                 throw new Exception("Không tìm thấy cột 'Trạng thái giao dịch' trong header ui-grid.");
+            }
+
+            int transactionColIndex = GetGridColumnIndexByTitles(driverGC, "Số giao dịch", "Số chứng từ");
+            if (transactionColIndex < 0)
+            {
+                throw new Exception("Không tìm thấy cột 'Số giao dịch' hoặc 'Số chứng từ' trong header ui-grid.");
             }
 
             IWebElement viewport = wait.Until(d => d.FindElement(By.CssSelector(".ui-grid-render-container-body")));
@@ -203,6 +210,23 @@ namespace BIDVAutoVS2022
                         continue;
                     }
 
+                    if (cells.Count <= transactionColIndex)
+                    {
+                        continue;
+                    }
+
+                    string gridTransactionNo = NormalizeGridText(cells[transactionColIndex].Text);
+                    string normalizedGridTransactionKey = NormalizeTransactionKey(gridTransactionNo);
+                    if (string.IsNullOrWhiteSpace(normalizedGridTransactionKey))
+                    {
+                        continue;
+                    }
+
+                    if (processedTransactionKeys.Contains(normalizedGridTransactionKey))
+                    {
+                        continue;
+                    }
+
                     string beforeCode = ReadCurrentProposalCode(driverGC, 400);
                     ((IJavaScriptExecutor)driverGC).ExecuteScript("arguments[0].scrollIntoView({block:'center'});", rowElement);
                     try
@@ -223,14 +247,17 @@ namespace BIDVAutoVS2022
                     var element = wait.Until(d =>
                         d.FindElement(By.Id("text-input-businessGeneralInfo:proposalCode"))
                     );
-                    string uiProcessKey = element.GetAttribute("value");
+                    string uiProcessKey = element.GetAttribute("value") ?? string.Empty;
 
-                    if (processedUiKeys.Contains(uiProcessKey))
+                    string normalizedUiProcessKey = NormalizeTransactionKey(uiProcessKey);
+                    if (processedUiKeys.Contains(uiProcessKey)
+                        || (!string.IsNullOrWhiteSpace(normalizedUiProcessKey) && processedTransactionKeys.Contains(normalizedUiProcessKey)))
                     {
+                        processedTransactionKeys.Add(normalizedGridTransactionKey);
                         continue;
                     }
 
-                    if (mapByTransaction.TryGetValue(uiProcessKey, out Queue<Dictionary<string, string>>? excelQueue)
+                    if (mapByTransaction.TryGetValue(normalizedUiProcessKey, out Queue<Dictionary<string, string>>? excelQueue)
                         && excelQueue.Count > 0)
                     {
                         Dictionary<string, string> matchedExcelRow = excelQueue.Dequeue();
@@ -285,9 +312,20 @@ namespace BIDVAutoVS2022
                         {
                             Logger.LogError($"[JSON MIDDLE ERROR] Lỗi chạy script_trung_gian khi không khớp Excel. proposalCode='{currentProposalCode}'", ex);
                         }
+                        processedTransactionKeys.Add(normalizedGridTransactionKey);
+                        if (!string.IsNullOrWhiteSpace(normalizedUiProcessKey))
+                        {
+                            processedTransactionKeys.Add(normalizedUiProcessKey);
+                        }
+                        processedUiKeys.Add(uiProcessKey);
                         continue;
                     }
 
+                    processedTransactionKeys.Add(normalizedGridTransactionKey);
+                    if (!string.IsNullOrWhiteSpace(normalizedUiProcessKey))
+                    {
+                        processedTransactionKeys.Add(normalizedUiProcessKey);
+                    }
                     processedUiKeys.Add(uiProcessKey);
                     handledInCurrentViewport = true;
                     break;
@@ -430,15 +468,23 @@ namespace BIDVAutoVS2022
 
         private static int GetGridColumnIndexByTitle(IWebDriver driver, string columnTitle)
         {
+            return GetGridColumnIndexByTitles(driver, columnTitle);
+        }
+
+        private static int GetGridColumnIndexByTitles(IWebDriver driver, params string[] columnTitles)
+        {
             var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(20));
             var headerCells = wait.Until(d => d.FindElements(By.CssSelector(".ui-grid-header-cell .ui-grid-cell-contents span.ng-binding")));
 
             for (int i = 0; i < headerCells.Count; i++)
             {
                 string title = NormalizeGridText(headerCells[i].Text);
-                if (string.Equals(title, columnTitle, StringComparison.OrdinalIgnoreCase))
+                foreach (string columnTitle in columnTitles)
                 {
-                    return i - 1;
+                    if (string.Equals(title, columnTitle, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return i - 1;
+                    }
                 }
             }
 
