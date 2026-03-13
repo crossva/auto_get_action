@@ -312,6 +312,7 @@ namespace BIDVAutoVS2022
                             Logger.LogInfo($"[JSON TRACE] rowIndex={rowIndex}; đã click breadcrumb back.");
 
                             currentStage = "find_proposal_input";
+                            WaitAndFindElement(driverGC, By.Id("text-input-businessGeneralInfo:proposalCode"), 20000);
                             wait = new WebDriverWait(driverGC, TimeSpan.FromSeconds(10));
                             var element = wait.Until(d =>
                                 d.FindElement(By.Id("text-input-businessGeneralInfo:proposalCode"))
