@@ -187,6 +187,9 @@ namespace BIDVAutoVS2022
             while (scrollTry < maxScrollTries)
             {
                 bool handledInCurrentViewport = false;
+                WaitAndFindElement(driverGC, By.CssSelector("div.ui-grid-render-container-body"), 10000);
+                //wait = new WebDriverWait(driverGC, TimeSpan.FromSeconds(20));
+                //wait.Until(d => d.FindElement(By.CssSelector("div.ui-grid-render-container-body")));
                 var rows = driverGC.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
 
                 for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
@@ -387,21 +390,36 @@ namespace BIDVAutoVS2022
         private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions, bool skipFirstClickRow = false)
         {
             bool hasSkippedClickRow = false;
-            foreach (var step in steps.OrderBy(x => GetIntValue(x, "order_by", 0)))
+            var orderedSteps = steps.OrderBy(x => GetIntValue(x, "order_by", 0)).ToList();
+            int currentIndex = 0;
+            int executedCount = 0;
+            int maxExecutions = Math.Max(orderedSteps.Count * 20, 1000);
+
+            while (currentIndex >= 0 && currentIndex < orderedSteps.Count)
             {
+                if (++executedCount > maxExecutions)
+                {
+                    throw new InvalidOperationException("Phát hiện khả năng lặp vô hạn trong luồng step JSON. Vui lòng kiểm tra lại index_next_step.");
+                }
+
+                Dictionary<string, object?> step = orderedSteps[currentIndex];
                 if (!GetBoolValue(step, "hieuluc", true))
                 {
+                    currentIndex = GetNextSequentialStepIndex(currentIndex, orderedSteps.Count);
                     continue;
                 }
 
                 string typeBy = GetStringValue(step, "type_by", "").Trim().ToLowerInvariant();
                 string stepName = GetStringValue(step, "name", "(no_name)");
+                int orderBy = GetIntValue(step, "order_by", 0);
                 int beginMs = GetIntValue(step, "begin_time_sleep", 0);
                 int inMs = GetIntValue(step, "in_time_sleep", 0);
                 int endMs = GetIntValue(step, "end_time_sleep", 0);
+                bool isEnd = GetBoolValueFlexible(step, "is_end", false);
+                bool hasIndexNextStep = TryGetIntValue(step, "index_next_step", out int indexNextStep);
+                bool shouldJumpToConfiguredStep = false;
 
                 SleepMs(beginMs);
-                //WaitByInTime(inMs);
 
                 if (typeBy == "internal loop")
                 {
@@ -412,6 +430,8 @@ namespace BIDVAutoVS2022
                         var loopSteps = ReadScript(loopPath);
                         ExecuteSteps(loopSteps, rowValues, Path.GetDirectoryName(loopPath) ?? scriptDirectory, driverGC, actions);
                     }
+
+                    shouldJumpToConfiguredStep = hasIndexNextStep;
                 }
                 else
                 {
@@ -428,20 +448,83 @@ namespace BIDVAutoVS2022
                     {
                         Logger.LogInfo($"[JSON STEP] Bỏ qua step is_click_row vì dòng UI đã được chọn trước. name={stepName}");
                         hasSkippedClickRow = true;
-                        SleepMs(endMs);
-                        continue;
+                        shouldJumpToConfiguredStep = hasIndexNextStep;
                     }
-
-                    Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}");
-                    bool stepExecuted = ExecuteUiStepWithRetry(stepName, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
-                    if (!stepExecuted)
+                    else if (typeBy == "condition")
                     {
-                        Logger.LogInfo($"[JSON STEP SKIP] Step '{stepName}' không thực hiện được sau 2 lần thử, chuyển sang step tiếp theo.");
+                        bool conditionMatched = IsConditionMatched(selector, inputValue);
+                        Logger.LogInfo($"[JSON CONDITION] name={stepName}; order_by={orderBy}; s_value={selector}; input_value={inputValue}; matched={conditionMatched}; index_next_step={(hasIndexNextStep ? indexNextStep.ToString(CultureInfo.InvariantCulture) : "(auto)")}");
+                        shouldJumpToConfiguredStep = conditionMatched && hasIndexNextStep;
+                    }
+                    else
+                    {
+                        Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}; index_next_step={(hasIndexNextStep ? indexNextStep.ToString(CultureInfo.InvariantCulture) : "(auto)")}; is_end={isEnd}");
+                        bool stepExecuted = ExecuteUiStepWithRetry(stepName, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                        if (!stepExecuted)
+                        {
+                            Logger.LogInfo($"[JSON STEP SKIP] Step '{stepName}' không thực hiện được sau 2 lần thử, chuyển sang step tiếp theo.");
+                        }
+                        else
+                        {
+                            shouldJumpToConfiguredStep = hasIndexNextStep;
+                        }
                     }
                 }
 
                 SleepMs(endMs);
+
+                if (isEnd)
+                {
+                    Logger.LogInfo($"[JSON STEP END] Kết thúc sớm luồng detail tại step '{stepName}' (order_by={orderBy}) do is_end=true.");
+                    return;
+                }
+
+                if (shouldJumpToConfiguredStep)
+                {
+                    currentIndex = ResolveNextStepIndexByOrder(orderedSteps, indexNextStep, currentIndex, stepName);
+                }
+                else
+                {
+                    currentIndex = GetNextSequentialStepIndex(currentIndex, orderedSteps.Count);
+                }
             }
+        }
+
+        private static int GetNextSequentialStepIndex(int currentIndex, int stepCount)
+        {
+            int nextIndex = currentIndex + 1;
+            return nextIndex < stepCount ? nextIndex : stepCount;
+        }
+
+        private static int ResolveNextStepIndexByOrder(List<Dictionary<string, object?>> orderedSteps, int targetOrderBy, int currentIndex, string stepName)
+        {
+            int exactIndex = orderedSteps.FindIndex(x => GetIntValue(x, "order_by", 0) == targetOrderBy);
+            if (exactIndex >= 0)
+            {
+                if (exactIndex == currentIndex)
+                {
+                    throw new InvalidOperationException($"Step '{stepName}' đang trỏ index_next_step về chính order_by={targetOrderBy}, dễ gây lặp vô hạn.");
+                }
+
+                return exactIndex;
+            }
+
+            int fallbackIndex = orderedSteps.FindIndex(x => GetIntValue(x, "order_by", 0) > targetOrderBy);
+            if (fallbackIndex >= 0)
+            {
+                Logger.LogInfo($"[JSON STEP JUMP] Step '{stepName}' không tìm thấy order_by={targetOrderBy}, chuyển sang order_by gần nhất phía sau là {GetIntValue(orderedSteps[fallbackIndex], "order_by", 0)}.");
+                return fallbackIndex;
+            }
+
+            Logger.LogInfo($"[JSON STEP JUMP] Step '{stepName}' không tìm thấy order_by={targetOrderBy}, kết thúc luồng hiện tại.");
+            return orderedSteps.Count;
+        }
+
+        private static bool IsConditionMatched(string leftValue, string rightValue)
+        {
+            string normalizedLeft = (leftValue ?? string.Empty).Trim();
+            string normalizedRight = (rightValue ?? string.Empty).Trim();
+            return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ExecuteUiStepWithRetry(string stepName, Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
@@ -1180,6 +1263,32 @@ namespace BIDVAutoVS2022
             }
 
             return int.TryParse(value.ToString(), out int result) ? result : defaultValue;
+        }
+
+        private static bool TryGetIntValue(Dictionary<string, object?> dic, string key, out int result)
+        {
+            result = 0;
+            if (!dic.TryGetValue(key, out object? value) || value == null)
+            {
+                return false;
+            }
+
+            if (value is JsonElement json)
+            {
+                if (json.ValueKind == JsonValueKind.Number && json.TryGetInt32(out result))
+                {
+                    return true;
+                }
+
+                if (json.ValueKind == JsonValueKind.String && int.TryParse(json.GetString(), out result))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            return int.TryParse(value.ToString(), out result);
         }
 
         private static bool GetBoolValue(Dictionary<string, object?> dic, string key, bool defaultValue)
