@@ -230,15 +230,16 @@ namespace BIDVAutoVS2022
                     var rows = driverGC.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
                     Logger.LogInfo($"[JSON TRACE] scrollTry={scrollTry}; rowCount={rows.Count}.");
 
-                    for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
-                    {
-                        string currentStage = "start";
-                        string gridTransactionNo = string.Empty;
-                        string normalizedGridTransactionKey = string.Empty;
-                        string uiProcessKey = string.Empty;
-                        string normalizedUiProcessKey = string.Empty;
-                        Dictionary<string, string>? matchedExcelRow = null;
-                        string matchedStt = string.Empty;
+                     for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+                     {
+                         string currentStage = "start";
+                         string gridTransactionNo = string.Empty;
+                         string normalizedGridTransactionKey = string.Empty;
+                         string uiProcessKey = string.Empty;
+                         string normalizedUiProcessKey = string.Empty;
+                         Dictionary<string, string>? matchedExcelRow = null;
+                         bool detailErrorAlreadyRecorded = false;
+                         string matchedStt = string.Empty;
 
                         try
                         {
@@ -368,21 +369,23 @@ namespace BIDVAutoVS2022
                                     AppendExecutionResult(executionResults, "thành công", $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; xử lý chi tiết thành công.");
                                     success++;
                                 }
-                                catch (Exception ex)
-                                {
-                                    Logger.LogError($"[JSON CASE ERROR] STT={matchedStt}; so_giao_dich={GetRowValue(matchedExcelRow, "so_giao_dich")}; rowIndex={rowIndex}; scrollTry={scrollTry}", ex);
-                                    newItems.Add(new JsonRunItem
-                                    {
+                                 catch (Exception ex)
+                                 {
+                                     Logger.LogError($"[JSON CASE ERROR] STT={matchedStt}; so_giao_dich={GetRowValue(matchedExcelRow, "so_giao_dich")}; rowIndex={rowIndex}; scrollTry={scrollTry}", ex);
+                                     newItems.Add(new JsonRunItem
+                                     {
                                         Id = matchedStt,
                                         Stt = matchedStt,
                                         LanChay = 1,
                                         Status = "error",
                                         Message = ex.ToString(),
                                         MessageBefore = string.Empty
-                                    });
-                                    AppendExecutionResult(executionResults, "thất bại", $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; lỗi xử lý detail: {ex.Message}");
-                                    fail++;
-                                }
+                                     });
+                                     AppendExecutionResult(executionResults, "thất bại", $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; lỗi xử lý detail: {ex.Message}");
+                                     fail++;
+                                     detailErrorAlreadyRecorded = true;
+                                     throw;
+                                 }
 
                                 processedRows.Add(matchedExcelRow);
                             }
@@ -454,17 +457,20 @@ namespace BIDVAutoVS2022
                                 ? $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; lỗi tại stage='{currentStage}': {ex.Message}"
                                 : $"rowIndex={rowIndex}; scrollTry={scrollTry}; transaction='{gridTransactionNo}'; lỗi tại stage='{currentStage}': {ex.Message}";
 
-                            newItems.Add(new JsonRunItem
+                            if (!detailErrorAlreadyRecorded)
                             {
-                                Id = string.IsNullOrWhiteSpace(matchedStt) ? $"{scrollTry}_{rowIndex}" : matchedStt,
-                                Stt = matchedStt,
-                                LanChay = 1,
-                                Status = "error",
-                                Message = resultDescription,
-                                MessageBefore = string.Empty
-                            });
-                            AppendExecutionResult(executionResults, "thất bại", resultDescription);
-                            fail++;
+                                newItems.Add(new JsonRunItem
+                                {
+                                    Id = string.IsNullOrWhiteSpace(matchedStt) ? $"{scrollTry}_{rowIndex}" : matchedStt,
+                                    Stt = matchedStt,
+                                    LanChay = 1,
+                                    Status = "error",
+                                    Message = resultDescription,
+                                    MessageBefore = string.Empty
+                                });
+                                AppendExecutionResult(executionResults, "thất bại", resultDescription);
+                                fail++;
+                            }
 
                             RunExceptionSteps(exceptionSteps, scriptDirectory, driverGC, actions, rowIndex, scrollTry, currentStage);
                             handledInCurrentViewport = true;
@@ -603,7 +609,27 @@ namespace BIDVAutoVS2022
         private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions, bool skipFirstClickRow = false)
         {
             bool hasSkippedClickRow = false;
-            var orderedSteps = steps.OrderBy(x => GetIntValue(x, "order_by", 0)).ToList();
+            int stepIndexStart = GetStepIndexStart(rowValues);
+            var orderedSteps = steps
+                .Where(x => GetIntValue(x, "order_by", 0) >= stepIndexStart)
+                .OrderBy(x => GetIntValue(x, "order_by", 0))
+                .ToList();
+
+            if (stepIndexStart > 0)
+            {
+                Logger.LogInfo($"[JSON STEP START] step_index_start={stepIndexStart}; totalStepsAfterFilter={orderedSteps.Count}.");
+            }
+
+            if (orderedSteps.Count == 0)
+            {
+                if (stepIndexStart > 0)
+                {
+                    Logger.LogInfo($"[JSON STEP START] Không có step nào thỏa điều kiện order_by >= {stepIndexStart}, bỏ qua luồng step hiện tại.");
+                }
+
+                return;
+            }
+
             int currentIndex = 0;
             int executedCount = 0;
             int maxExecutions = Math.Max(orderedSteps.Count * 20, 1000);
@@ -707,6 +733,28 @@ namespace BIDVAutoVS2022
         {
             int nextIndex = currentIndex + 1;
             return nextIndex < stepCount ? nextIndex : stepCount;
+        }
+
+        private static int GetStepIndexStart(Dictionary<string, string> rowValues)
+        {
+            if (rowValues == null)
+            {
+                return 0;
+            }
+
+            string rawValue = GetRowValue(rowValues, "step_index_start");
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return 0;
+            }
+
+            if (int.TryParse(rawValue.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue) && parsedValue > 0)
+            {
+                return parsedValue;
+            }
+
+            Logger.LogInfo($"[JSON STEP START] step_index_start='{rawValue}' không hợp lệ, mặc định chạy từ step đầu tiên.");
+            return 0;
         }
 
         private static int ResolveNextStepIndexByOrder(List<Dictionary<string, object?>> orderedSteps, int targetOrderBy, int currentIndex, string stepName)
