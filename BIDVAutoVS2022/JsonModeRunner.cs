@@ -751,6 +751,12 @@ namespace BIDVAutoVS2022
                 }
                 catch (Exception ex)
                 {
+                    if (IsElementNotFoundException(ex))
+                    {
+                        Logger.LogError($"[JSON STEP FAIL FAST] Step '{stepName}' lỗi không tìm thấy element ở lần {attempt}/2.", ex);
+                        throw;
+                    }
+
                     Logger.LogError($"[JSON STEP RETRY] Step '{stepName}' lỗi ở lần {attempt}/2.", ex);
                     if (attempt < 2)
                     {
@@ -760,6 +766,19 @@ namespace BIDVAutoVS2022
             }
 
             return false;
+        }
+
+        private static bool IsElementNotFoundException(Exception ex)
+        {
+            if (ex is NoSuchElementException)
+            {
+                return true;
+            }
+
+            string message = ex.Message ?? string.Empty;
+            return message.IndexOf("không tìm thấy element", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("khong tim thay element", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("no such element", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static int GetGridColumnIndexByTitle(IWebDriver driver, string columnTitle)

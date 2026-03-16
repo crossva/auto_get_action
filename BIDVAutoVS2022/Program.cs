@@ -1014,6 +1014,19 @@ namespace BIDVAutoVS2022
             return null;
         }
 
+        static bool IsElementNotFoundException(Exception ex)
+        {
+            if (ex is NoSuchElementException)
+            {
+                return true;
+            }
+
+            string message = ex.Message ?? string.Empty;
+            return message.IndexOf("không tìm thấy element", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("khong tim thay element", StringComparison.OrdinalIgnoreCase) >= 0
+                || message.IndexOf("no such element", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         static void Main(string[] args)
         {
             Logger.LogInfo($"Khởi tạo tại {DateTime.Now}");
@@ -1329,12 +1342,24 @@ namespace BIDVAutoVS2022
                                         break;
                                     }
 
-                                    Logger.LogInfo($"[STEP RETRY] Bước {order_by} không thực hiện được ở lần {attempt}/2.");
+                                    Logger.LogInfo($"[STEP FAIL FAST] Bước {order_by} không tìm thấy element, dừng ngay lần chạy hiện tại.");
+                                    break;
                                 }
                                 catch (Exception exStep)
                                 {
                                     lastStepException = exStep;
+                                    if (IsElementNotFoundException(exStep))
+                                    {
+                                        Logger.LogError($"[STEP FAIL FAST] Bước {order_by} lỗi không tìm thấy element ở lần {attempt}/2.", exStep);
+                                        throw;
+                                    }
+
                                     Logger.LogError($"[STEP RETRY] Bước {order_by} lỗi ở lần {attempt}/2.", exStep);
+                                }
+
+                                if (bresult == false)
+                                {
+                                    break;
                                 }
 
                                 if (attempt < 2)
