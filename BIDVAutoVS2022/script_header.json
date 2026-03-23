@@ -13,7 +13,7 @@
   {
     "name": "Nhập user name",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 2,
     "s_value": "/html/body/div/div/div[1]/div/div[2]/form/div[2]/div/div/input",
     "input_value": "164423",
     "begin_time_sleep": 500,
@@ -24,7 +24,7 @@
   {
     "name": "Nhập mật khẩu",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 3,
     "s_value": "//*[@id=\"password\"]",
     "input_value": "Iware@quy226",
     "begin_time_sleep": 500,
@@ -35,7 +35,7 @@
   {
     "name": "Nhấn nút login",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 4,
     "s_value": "//*[@id=\"page-content\"]/div/div[1]/div/div[2]/form/button",
     "input_value": "",
     "begin_time_sleep": 500,
@@ -46,7 +46,7 @@
   {
     "name": "Truy cập tiếp đường dẫn",
     "type_by": "url",
-    "order_by": 1,
+    "order_by": 5,
     "s_value": "https://bpm-prd.bidv.com.vn/baw-bawinst1/ProcessPortal",
     "input_value": "",
     "begin_time_sleep": 500,
@@ -57,7 +57,7 @@
   {
     "name": "chờ cho đến khi xuất hiện load đầy đủ",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 6,
     "s_value": "//*[@id=\"collapseDashboardsMenu\"]/div/div[2]/a",
     "input_value": "",
     "is_click": 1,
@@ -69,7 +69,7 @@
   {
     "name": "Truy cập tiếp công việc của tôi",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 7,
     "s_value": "//a[@title='KTTT - Công việc của tôi']",
     "input_value": "",
     "is_click": 1,
@@ -81,7 +81,7 @@
   {
     "name": "nhập phòng",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 8,
     "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[1]/div[1]/input",
     "input_value": "{{so_giao_dich_nb}}",
     "begin_time_sleep": 200,
@@ -92,7 +92,7 @@
   {
     "name": "click search",
     "type_by": "btn",
-    "order_by": 2,
+    "order_by": 9,
     "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[2]/button",
     "is_click": 1,
     "is_click_row": 0,

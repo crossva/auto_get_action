@@ -14,7 +14,7 @@
   {
     "name": "Truy cập tiếp công việc của tôi",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 2,
     "s_value": "//a[@title='KTTT - Công việc của tôi']",
     "input_value": "",
     "is_click": 1,
@@ -26,7 +26,7 @@
   {
     "name": "nhập phòng",
     "type_by": "path",
-    "order_by": 1,
+    "order_by": 3,
     "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[1]/div[1]/input",
     "input_value": "{{so_giao_dich_nb}}",
     "begin_time_sleep": 200,
@@ -37,7 +37,7 @@
   {
     "name": "click search",
     "type_by": "btn",
-    "order_by": 2,
+    "order_by": 4,
     "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[2]/button",
     "is_click": 1,
     "is_click_row": 0,
