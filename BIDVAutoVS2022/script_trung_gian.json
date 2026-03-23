@@ -22,29 +22,5 @@
     "in_time_sleep": 1000,
     "end_time_sleep": 5000,
     "hieuluc": true
-  },
-  {
-    "name": "nhập phòng",
-    "type_by": "path",
-    "order_by": 3,
-    "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[1]/div[1]/input",
-    "input_value": "{{so_giao_dich_nb}}",
-    "begin_time_sleep": 200,
-    "in_time_sleep": 1000,
-    "end_time_sleep": 200,
-    "hieuluc": true
-  },
-  {
-    "name": "click search",
-    "type_by": "btn",
-    "order_by": 4,
-    "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[2]/button",
-    "is_click": 1,
-    "is_click_row": 0,
-    "filename_script_internal_loop": "script_internal_loop.json",
-    "begin_time_sleep": 1000,
-    "in_time_sleep": 500,
-    "end_time_sleep": 3000,
-    "hieuluc": true
   }
 ]
