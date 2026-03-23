@@ -37,8 +37,9 @@ namespace BIDVAutoVS2022
             string middleScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_middle_script_path"] ?? "script_trung_gian.json", baseDir);
             string exceptionScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_exception_script_path"] ?? "script_exception.json", baseDir);
             string excelPath = ResolvePath(ConfigurationManager.AppSettings["json_data_source_path"] ?? "script_data.csv", baseDir);
-            string resultFolder = ResolvePath(ConfigurationManager.AppSettings["json_result_folder"] ?? Path.Combine(baseDir, "json_result"), baseDir);
-            string fixedResultPath = ResolvePath(ConfigurationManager.AppSettings["json_fixed_result_file"] ?? Path.Combine(resultFolder, "ket_qua.json"), baseDir);
+            string defaultResultFolder = Path.Combine(baseDir, "result");
+            string resultFolder = ResolvePath(ConfigurationManager.AppSettings["json_result_folder"] ?? defaultResultFolder, baseDir);
+            string fixedResultPath = ResolvePath(ConfigurationManager.AppSettings["json_fixed_result_file"] ?? Path.Combine(defaultResultFolder, "ket_qua.json"), baseDir);
 
             Directory.CreateDirectory(resultFolder);
 
@@ -48,7 +49,7 @@ namespace BIDVAutoVS2022
             var exceptionSteps = File.Exists(exceptionScriptPath) ? ReadScript(exceptionScriptPath) : new List<Dictionary<string, object?>>();
             var inputRows = ReadInputRows(excelPath);
 
-            string pathDownload = ConfigurationManager.AppSettings["path_download"] ?? Path.Combine(baseDir, "download");
+            string pathDownload = ResolvePath(ConfigurationManager.AppSettings["path_download"] ?? defaultResultFolder, baseDir);
             string version = ConfigurationManager.AppSettings["version"] ?? "v0.36.0";
             string onlineVersion = ConfigurationManager.AppSettings["online_version"] ?? "0";
             string isBrowseChrome = ConfigurationManager.AppSettings["is_browse_chrome"] ?? "0";
@@ -230,16 +231,16 @@ namespace BIDVAutoVS2022
                     var rows = driverGC.FindElements(By.CssSelector(".ui-grid-render-container-body .ui-grid-row"));
                     Logger.LogInfo($"[JSON TRACE] scrollTry={scrollTry}; rowCount={rows.Count}.");
 
-                     for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
-                     {
-                         string currentStage = "start";
-                         string gridTransactionNo = string.Empty;
-                         string normalizedGridTransactionKey = string.Empty;
-                         string uiProcessKey = string.Empty;
-                         string normalizedUiProcessKey = string.Empty;
-                         Dictionary<string, string>? matchedExcelRow = null;
-                         bool detailErrorAlreadyRecorded = false;
-                         string matchedStt = string.Empty;
+                    for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
+                    {
+                        string currentStage = "start";
+                        string gridTransactionNo = string.Empty;
+                        string normalizedGridTransactionKey = string.Empty;
+                        string uiProcessKey = string.Empty;
+                        string normalizedUiProcessKey = string.Empty;
+                        Dictionary<string, string>? matchedExcelRow = null;
+                        bool detailErrorAlreadyRecorded = false;
+                        string matchedStt = string.Empty;
 
                         try
                         {
@@ -369,23 +370,23 @@ namespace BIDVAutoVS2022
                                     AppendExecutionResult(executionResults, "thành công", $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; xử lý chi tiết thành công.");
                                     success++;
                                 }
-                                 catch (Exception ex)
-                                 {
-                                     Logger.LogError($"[JSON CASE ERROR] STT={matchedStt}; so_giao_dich={GetRowValue(matchedExcelRow, "so_giao_dich")}; rowIndex={rowIndex}; scrollTry={scrollTry}", ex);
-                                     newItems.Add(new JsonRunItem
-                                     {
+                                catch (Exception ex)
+                                {
+                                    Logger.LogError($"[JSON CASE ERROR] STT={matchedStt}; so_giao_dich={GetRowValue(matchedExcelRow, "so_giao_dich")}; rowIndex={rowIndex}; scrollTry={scrollTry}", ex);
+                                    newItems.Add(new JsonRunItem
+                                    {
                                         Id = matchedStt,
                                         Stt = matchedStt,
                                         LanChay = 1,
                                         Status = "error",
                                         Message = ex.ToString(),
                                         MessageBefore = string.Empty
-                                     });
-                                     AppendExecutionResult(executionResults, "thất bại", $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; lỗi xử lý detail: {ex.Message}");
-                                     fail++;
-                                     detailErrorAlreadyRecorded = true;
-                                     throw;
-                                 }
+                                    });
+                                    AppendExecutionResult(executionResults, "thất bại", $"STT nguồn={matchedStt}; so_giao_dich='{GetRowValue(matchedExcelRow, "so_giao_dich")}'; lỗi xử lý detail: {ex.Message}");
+                                    fail++;
+                                    detailErrorAlreadyRecorded = true;
+                                    throw;
+                                }
 
                                 processedRows.Add(matchedExcelRow);
                             }

@@ -158,7 +158,6 @@
     "in_time_sleep": 5000,
     "end_time_sleep": 1000
   },
-
   {
     "name": "Chọn lãnh đạo",
     "type_by": "sel",
@@ -276,9 +275,17 @@
     "end_time_sleep": 5000
   },
   {
+    "name": "Nếu là quà tặng thì nhảy đến bước 24 luôn",
+    "type_by": "condition",
+    "order_by": 30,
+    "s_value": "{{is_qua_tang}}",
+    "input_value": "1",
+    "index_next_step": 32
+  },
+  {
     "name": "Tiếp tục",
     "type_by": "path",
-    "order_by": 23,
+    "order_by": 31,
     "s_value": "//*[@id=\"button-button-Button22\"]",
     "input_value": "",
     "replace_value": "",
@@ -292,7 +299,7 @@
   {
     "name": "Chuyển người phê duyệt",
     "type_by": "path",
-    "order_by": 24,
+    "order_by": 32,
     "s_value": "//*[@id=\"button-button-okbutton\"]",
     "input_value": "",
     "replace_value": "",
@@ -301,6 +308,7 @@
     "filename_script_internal_loop": "",
     "begin_time_sleep": 5000,
     "in_time_sleep": 5000,
-    "end_time_sleep": 5000
+    "is_end": true,
+    "end_time_sleep": 25000
   }
 ]

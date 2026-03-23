@@ -1048,7 +1048,14 @@ namespace BIDVAutoVS2022
             string server = ConfigurationManager.AppSettings["server"] ?? "10.130.2.20";
             int port = Convert.ToInt32(ConfigurationManager.AppSettings["port"] ?? "5432");
             string database_name = ConfigurationManager.AppSettings["database_name"] ?? "bidv_hcm_001";
-            string path_download = ConfigurationManager.AppSettings["path_download"] ?? "D:\\AutoGetODS";
+            string baseDir = AppContext.BaseDirectory;
+            string defaultResultDirectory = Path.Combine(baseDir, "result");
+            string path_download_setting = ConfigurationManager.AppSettings["path_download"];
+            string path_download = string.IsNullOrWhiteSpace(path_download_setting)
+                ? defaultResultDirectory
+                : (Path.IsPathRooted(path_download_setting)
+                    ? path_download_setting
+                    : Path.GetFullPath(Path.Combine(baseDir, path_download_setting)));
             string so_ngay_back_date = ConfigurationManager.AppSettings["so_ngay_back_date"] ?? "1";
             string only_run_dv_import_config_header = ConfigurationManager.AppSettings["only_run_dv_import_config_header"] ?? "0";
             string only_run_dv_import_config_auto_header = ConfigurationManager.AppSettings["only_run_dv_import_config_auto_header"] ?? "0";
@@ -1238,7 +1245,7 @@ namespace BIDVAutoVS2022
                     
 
                     //Bắt đầu mở trình duyệt
-                    FolderDownloadCur = string.Format(@"{0}\{1}", path_download, syyyymmdd);
+                    FolderDownloadCur = Path.Combine(path_download, syyyymmdd);
                     if (!System.IO.Directory.Exists(FolderDownloadCur))
                     {
                         System.IO.Directory.CreateDirectory(FolderDownloadCur);
@@ -1246,7 +1253,7 @@ namespace BIDVAutoVS2022
                     /// Trường hợp có thư mục con để dưa vào
                     if (folder_sub != "")
                     {
-                        FolderDownloadCur = string.Format(@"{0}\{1}", FolderDownloadCur, folder_sub);
+                        FolderDownloadCur = Path.Combine(FolderDownloadCur, folder_sub);
                         if (!System.IO.Directory.Exists(FolderDownloadCur))
                         {
                             System.IO.Directory.CreateDirectory(FolderDownloadCur);
@@ -1254,7 +1261,7 @@ namespace BIDVAutoVS2022
                     }
  
                     ///Thực hiện xóa file hiện hành nếu tồn tại file
-                    full_file_name_dl = string.Format(@"{0}\{1}", FolderDownloadCur, file_name_download);
+                    full_file_name_dl = Path.Combine(FolderDownloadCur, file_name_download);
                     if (is_delete == "true")
                     {
                         if (File.Exists(full_file_name_dl))
