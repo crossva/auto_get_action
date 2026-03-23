@@ -28,7 +28,7 @@
     "type_by": "path",
     "order_by": 1,
     "s_value": "/html/body/div[2]/div/div/div[2]/div/div/div[2]/div[2]/div[1]/div/div[1]/div[1]/div[1]/input",
-    "input_value": "164423",
+    "input_value": "{{so_giao_dich_nb}}",
     "begin_time_sleep": 200,
     "in_time_sleep": 1000,
     "end_time_sleep": 200,
