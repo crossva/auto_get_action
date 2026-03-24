@@ -217,7 +217,9 @@ namespace BIDVAutoVS2022
                     }
                     catch (Exception ex)
                     {
-                        string resultDescription = $"STT nguồn={stt}; so_giao_dich='{soGiaoDich}'; so_giao_dich_nb='{soGiaoDichNb}'; lỗi tại stage='{currentStage}': {ex.Message}";
+                        int? failedOrderBy = ExtractFailedOrderBy(ex);
+                        string orderByText = failedOrderBy.HasValue ? failedOrderBy.Value.ToString(CultureInfo.InvariantCulture) : string.Empty;
+                        string resultDescription = $"STT nguồn={stt}; so_giao_dich='{soGiaoDich}'; so_giao_dich_nb='{soGiaoDichNb}'; lỗi tại stage='{currentStage}'{(failedOrderBy.HasValue ? $"; order_by='{orderByText}'" : string.Empty)}: {ex.Message}";
                         Logger.LogError($"[JSON TRACE FATAL] Lỗi tại ProcessByExcelRowsThenSearchUi. STT={stt}; rowIndex={rowIndex}; stage={currentStage}; so_giao_dich='{soGiaoDich}'; so_giao_dich_nb='{soGiaoDichNb}'.", ex);
 
                         newItems.Add(new JsonRunItem
@@ -229,7 +231,7 @@ namespace BIDVAutoVS2022
                             Message = resultDescription,
                             MessageBefore = string.Empty
                         });
-                        AppendExecutionResult(executionResults, "thất bại", resultDescription);
+                        AppendExecutionResult(executionResults, "thất bại", resultDescription, orderByText);
                         fail++;
 
                         RunExceptionSteps(exceptionSteps, scriptDirectory, driverGC, actions, rowIndex, rowIndex, currentStage);
@@ -272,13 +274,14 @@ namespace BIDVAutoVS2022
             }
         }
 
-        private static void AppendExecutionResult(List<ExecutionResultRow> executionResults, string status, string description)
+        private static void AppendExecutionResult(List<ExecutionResultRow> executionResults, string status, string description, string orderBy = "")
         {
             executionResults.Add(new ExecutionResultRow
             {
                 Stt = executionResults.Count + 1,
                 TrangThai = status,
-                Description = description
+                Description = description,
+                OrderBy = orderBy
             });
         }
 
@@ -290,6 +293,7 @@ namespace BIDVAutoVS2022
             worksheet.Cell(1, 1).Value = "stt";
             worksheet.Cell(1, 2).Value = "trang_thai";
             worksheet.Cell(1, 3).Value = "description";
+            worksheet.Cell(1, 4).Value = "order_by";
 
             for (int i = 0; i < executionResults.Count; i++)
             {
@@ -298,13 +302,31 @@ namespace BIDVAutoVS2022
                 worksheet.Cell(row, 1).Value = item.Stt;
                 worksheet.Cell(row, 2).Value = item.TrangThai;
                 worksheet.Cell(row, 3).Value = item.Description;
+                worksheet.Cell(row, 4).Value = item.OrderBy;
             }
 
-            var headerRange = worksheet.Range(1, 1, 1, 3);
+            var headerRange = worksheet.Range(1, 1, 1, 4);
             headerRange.Style.Font.Bold = true;
             worksheet.Columns().AdjustToContents();
             workbook.SaveAs(filePath);
         }
+
+        private static int? ExtractFailedOrderBy(Exception ex)
+        {
+            Exception? current = ex;
+            while (current != null)
+            {
+                if (current is JsonStepExecutionException jsonStepException)
+                {
+                    return jsonStepException.OrderBy;
+                }
+
+                current = current.InnerException;
+            }
+
+            return null;
+        }
+
         public static double GetScrollTopSafe(IWebDriver driver, By by, int timeoutMs = 5000)
         {
             IWebElement element = WaitAndFindElement(driver, by, timeoutMs);
@@ -410,7 +432,7 @@ namespace BIDVAutoVS2022
                     else
                     {
                         Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}; index_next_step={(hasIndexNextStep ? indexNextStep.ToString(CultureInfo.InvariantCulture) : "(auto)")}; is_end={isEnd}");
-                        bool stepExecuted = ExecuteUiStepWithRetry(stepName, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                    bool stepExecuted = ExecuteUiStepWithRetry(stepName, orderBy, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
                         if (!stepExecuted)
                         {
                             Logger.LogInfo($"[JSON STEP SKIP] Step '{stepName}' không thực hiện được sau 2 lần thử, chuyển sang step tiếp theo.");
@@ -500,7 +522,7 @@ namespace BIDVAutoVS2022
             return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool ExecuteUiStepWithRetry(string stepName, Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
+        private static bool ExecuteUiStepWithRetry(string stepName, int orderBy, Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
         {
             for (int attempt = 1; attempt <= 2; attempt++)
             {
@@ -514,13 +536,17 @@ namespace BIDVAutoVS2022
                     if (IsElementNotFoundException(ex))
                     {
                         Logger.LogError($"[JSON STEP FAIL FAST] Step '{stepName}' lỗi không tìm thấy element ở lần {attempt}/2.", ex);
-                        throw;
+                        throw new JsonStepExecutionException(stepName, orderBy, ex);
                     }
 
                     Logger.LogError($"[JSON STEP RETRY] Step '{stepName}' lỗi ở lần {attempt}/2.", ex);
                     if (attempt < 2)
                     {
                         SleepMs(1000);
+                    }
+                    else
+                    {
+                        throw new JsonStepExecutionException(stepName, orderBy, ex);
                     }
                 }
             }
@@ -1798,6 +1824,22 @@ namespace BIDVAutoVS2022
             public string TrangThai { get; set; } = string.Empty;
 
             public string Description { get; set; } = string.Empty;
+
+            public string OrderBy { get; set; } = string.Empty;
+        }
+
+        private sealed class JsonStepExecutionException : Exception
+        {
+            public JsonStepExecutionException(string stepName, int orderBy, Exception innerException)
+                : base($"Step '{stepName}' (order_by={orderBy}) lỗi: {innerException.Message}", innerException)
+            {
+                StepName = stepName;
+                OrderBy = orderBy;
+            }
+
+            public string StepName { get; }
+
+            public int OrderBy { get; }
         }
     }
 }
