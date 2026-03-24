@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Step bat buoc truoc khi chay dong moi",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "",
+    "input_value": "",
+    "is_click": 0,
+    "begin_time_sleep": 300,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 300,
+    "hieuluc": false
+  }
+]

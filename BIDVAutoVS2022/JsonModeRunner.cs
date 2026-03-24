@@ -35,6 +35,7 @@ namespace BIDVAutoVS2022
             string headerScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_header_script_path"] ?? "script_header.json", baseDir);
             string detailScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_detail_script_path"] ?? "script_detail.json", baseDir);
             string middleScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_middle_script_path"] ?? "script_trung_gian.json", baseDir);
+            string requiredStepScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_required_step_script_path"] ?? "script_required_step.json", baseDir);
             string exceptionScriptPath = ResolvePath(ConfigurationManager.AppSettings["json_exception_script_path"] ?? "script_exception.json", baseDir);
             string excelPath = ResolvePath(ConfigurationManager.AppSettings["json_data_source_path"] ?? "script_data.csv", baseDir);
             string defaultResultFolder = Path.Combine(baseDir, "result");
@@ -46,6 +47,7 @@ namespace BIDVAutoVS2022
             var headerSteps = ReadScript(headerScriptPath);
             var detailSteps = ReadScript(detailScriptPath);
             var middleSteps = File.Exists(middleScriptPath) ? ReadScript(middleScriptPath) : new List<Dictionary<string, object?>>();
+            var requiredSteps = File.Exists(requiredStepScriptPath) ? ReadScript(requiredStepScriptPath) : new List<Dictionary<string, object?>>();
             var exceptionSteps = File.Exists(exceptionScriptPath) ? ReadScript(exceptionScriptPath) : new List<Dictionary<string, object?>>();
             var inputRows = ReadInputRows(excelPath);
 
@@ -101,6 +103,7 @@ namespace BIDVAutoVS2022
                     inputRows,
                     detailSteps,
                     middleSteps,
+                    requiredSteps,
                     exceptionSteps,
                     Path.GetDirectoryName(detailScriptPath) ?? baseDir,
                     driverGC,
@@ -151,6 +154,7 @@ namespace BIDVAutoVS2022
             List<Dictionary<string, string>> inputRows,
             List<Dictionary<string, object?>> detailSteps,
             List<Dictionary<string, object?>> middleSteps,
+            List<Dictionary<string, object?>> requiredSteps,
             List<Dictionary<string, object?>> exceptionSteps,
             string scriptDirectory,
             IWebDriver driverGC,
@@ -172,7 +176,7 @@ namespace BIDVAutoVS2022
                     })
                     .ToList();
 
-                Logger.LogInfo($"[JSON TRACE] Bắt đầu ProcessByExcelRowsThenSearchUi. inputRows={inputRows.Count}; activeRows={activeRows.Count}; detailSteps={detailSteps.Count}; middleSteps={middleSteps.Count}; maxScrollTries={maxScrollTries}.");
+                Logger.LogInfo($"[JSON TRACE] Bắt đầu ProcessByExcelRowsThenSearchUi. inputRows={inputRows.Count}; activeRows={activeRows.Count}; detailSteps={detailSteps.Count}; middleSteps={middleSteps.Count}; requiredSteps={requiredSteps.Count}; maxScrollTries={maxScrollTries}.");
 
                 for (int rowIndex = 0; rowIndex < activeRows.Count; rowIndex++)
                 {
@@ -185,6 +189,15 @@ namespace BIDVAutoVS2022
                     try
                     {
                         Logger.LogInfo($"[JSON TRACE] STT={stt}; rowIndex={rowIndex}; bắt đầu xử lý detail theo dòng Excel. so_giao_dich='{soGiaoDich}'; so_giao_dich_nb='{soGiaoDichNb}'.");
+
+                        if (requiredSteps.Count > 0)
+                        {
+                            currentStage = "required_step";
+                            Logger.LogInfo($"[JSON TRACE] STT={stt}; rowIndex={rowIndex}; bắt đầu chạy requiredSteps trước khi xử lý detail.");
+                            bool isAllwayBegin = true;
+                            ExecuteSteps(requiredSteps, currentRow, scriptDirectory, driverGC, actions, isAllwayBegin: isAllwayBegin);
+                            Logger.LogInfo($"[JSON TRACE] STT={stt}; rowIndex={rowIndex}; ExecuteSteps(requiredSteps) hoàn tất.");
+                        }
 
                         currentStage = "detail";
                         ExecuteSteps(detailSteps, currentRow, scriptDirectory, driverGC, actions);
@@ -301,10 +314,14 @@ namespace BIDVAutoVS2022
             return Convert.ToDouble(result, CultureInfo.InvariantCulture);
         }
 
-        private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions, bool skipFirstClickRow = false)
+        private static void ExecuteSteps(List<Dictionary<string, object?>> steps, Dictionary<string, string> rowValues, string scriptDirectory, IWebDriver driverGC, Actions actions, bool skipFirstClickRow = false, bool isAllwayBegin = false)
         {
             bool hasSkippedClickRow = false;
             int stepIndexStart = GetStepIndexStart(rowValues);
+            if (isAllwayBegin)
+            {
+                stepIndexStart = 0;
+            }
             var orderedSteps = steps
                 .Where(x => GetIntValue(x, "order_by", 0) >= stepIndexStart)
                 .OrderBy(x => GetIntValue(x, "order_by", 0))
@@ -645,12 +662,14 @@ namespace BIDVAutoVS2022
             string customerTypeValue = GetRowValue(rowValues, "pk_kh");
             string matHang = GetRowValue(rowValues, "mat_hang");
             string tenCb = GetRowValue(rowValues, "ten_cb");
+            string isTaxValue = GetRowValue(rowValues, "is_tax_value");
             bool isQuaTang = IsOne(GetRowValue(rowValues, "is_qua_tang"));
             bool foundAnyDetailRow = false;
             for (int detailIndex = 0; ; detailIndex++)
             {
                 string productSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipProduct[0]:product";
                 string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipCustomerType[0]:customerType";
+                string vatSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipInputTax[0]:inputVatType";
 
                 if (!ElementExistsById(driverGC, productSelectId) || !ElementExistsById(driverGC, customerSelectId))
                 {
@@ -662,7 +681,10 @@ namespace BIDVAutoVS2022
                 {
                     ScrollToElementById(driverGC, productSelectId, inMs);
                 }
-
+                if (isTaxValue == "0")
+                {
+                    SelectDropdownByValue(driverGC, vatSelectId, "GTGTVAO4", inMs);
+                }
                 SelectDropdownByValue(driverGC, productSelectId, productValue, inMs);
                 SelectDropdownByValue(driverGC, customerSelectId, customerTypeValue, inMs);
 
