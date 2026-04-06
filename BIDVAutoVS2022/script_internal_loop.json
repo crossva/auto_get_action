@@ -1,13 +1,21 @@
 [
   {
-    "name": "Bước loop 1",
-    "type_by": "path",
+    "name": "In chung tu theo tung dong cua bang giao dich",
+    "type_by": "print_table_loop",
     "order_by": 1,
-    "s_value": "//*[@id='loop_1']",
-    "input_value": "{{value2}}",
-    "begin_time_sleep": 100,
-    "in_time_sleep": 500,
-    "end_time_sleep": 100,
+    "table_xpath": "//table[contains(@class,'table') and .//thead//th[normalize-space()='In chứng từ']]",
+    "row_xpath": ".//tbody/tr",
+    "row_button_xpath": ".//*[@role='button' and @aria-label='In chứng từ'] | .//*[@aria-label='In chứng từ']/ancestor::div[@role='button'][1]",
+    "print_page_ready_xpath": "//button[normalize-space()='Print' or normalize-space()='PRINT' or normalize-space()='In' or @aria-label='Print' or @title='Print' or contains(translate(@id, 'PRINT', 'print'), 'print')]",
+    "print_button_xpath": "//button[normalize-space()='Print' or normalize-space()='PRINT' or normalize-space()='In' or @aria-label='Print' or @title='Print' or contains(translate(@id, 'PRINT', 'print'), 'print')]",
+    "new_tab_timeout_ms": 15000,
+    "wait_after_open_ms": 2000,
+    "wait_after_print_ms": 4000,
+    "wait_after_close_ms": 1000,
+    "close_print_tab_after_print": true,
+    "begin_time_sleep": 500,
+    "in_time_sleep": 8000,
+    "end_time_sleep": 500,
     "hieuluc": true
   }
 ]

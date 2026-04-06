@@ -394,7 +394,7 @@ namespace BIDVAutoVS2022
 
                 SleepMs(beginMs);
 
-                if (typeBy == "internal loop")
+                if (typeBy == "internal_loop")
                 {
                     string fileLoop = GetStringValue(step, "filename_script_internal_loop", "");
                     if (!string.IsNullOrWhiteSpace(fileLoop))
@@ -406,6 +406,11 @@ namespace BIDVAutoVS2022
 
                     shouldJumpToConfiguredStep = hasIndexNextStep;
                 }
+                else if (typeBy == "print_table_loop")
+                {
+                    ExecutePrintTableLoop(step, rowValues, driverGC, inMs);
+                    shouldJumpToConfiguredStep = hasIndexNextStep;
+                }
                 else
                 {
                     string inputValue = ResolveInputValue(GetStringValue(step, "input_value", ""), rowValues);
@@ -415,6 +420,8 @@ namespace BIDVAutoVS2022
                     bool isClickAc = GetBoolValueFlexible(step, "is_click_ac", false);
                     bool isClickRow = GetBoolValueFlexible(step, "is_click_row", false);
                     bool isScrollCheck = GetBoolValueFlexible(step, "is_scroll_check", false);
+                    bool switchToNewTab = GetBoolValueFlexible(step, "switch_to_new_tab", false);
+                    int newTabTimeoutMs = GetIntValue(step, "new_tab_timeout_ms", Math.Max(inMs, 5000));
                     string sel_id = GetStringValue(step, "sel_id", "");
 
                     if (skipFirstClickRow && !hasSkippedClickRow && isClickRow)
@@ -432,7 +439,7 @@ namespace BIDVAutoVS2022
                     else
                     {
                         Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}; index_next_step={(hasIndexNextStep ? indexNextStep.ToString(CultureInfo.InvariantCulture) : "(auto)")}; is_end={isEnd}");
-                        bool stepExecuted = ExecuteUiStepWithRetry(stepName, orderBy, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                        bool stepExecuted = ExecuteUiStepWithRetry(stepName, orderBy, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck, switchToNewTab, newTabTimeoutMs);
                         if (!stepExecuted)
                         {
                             Logger.LogInfo($"[JSON STEP SKIP] Step '{stepName}' không thực hiện được sau 2 lần thử, chuyển sang step tiếp theo.");
@@ -522,13 +529,13 @@ namespace BIDVAutoVS2022
             return string.Equals(normalizedLeft, normalizedRight, StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool ExecuteUiStepWithRetry(string stepName, int orderBy, Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
+        private static bool ExecuteUiStepWithRetry(string stepName, int orderBy, Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck, bool switchToNewTab, int newTabTimeoutMs)
         {
             for (int attempt = 1; attempt <= 2; attempt++)
             {
                 try
                 {
-                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                    ExecuteUiStep(rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck, switchToNewTab, newTabTimeoutMs);
                     return true;
                 }
                 catch (Exception ex)
@@ -552,6 +559,125 @@ namespace BIDVAutoVS2022
             }
 
             return false;
+        }
+
+        private static void ExecutePrintTableLoop(Dictionary<string, object?> step, Dictionary<string, string> rowValues, IWebDriver driverGC, int inMs)
+        {
+            string tableXPath = ResolveInputValue(GetStringValue(step, "table_xpath", GetStringValue(step, "s_value", "//table")), rowValues);
+            string rowXPath = GetStringValue(step, "row_xpath", ".//tbody/tr");
+            string rowButtonXPath = ResolveInputValue(GetStringValue(step, "row_button_xpath", ".//*[@role='button' and @aria-label='In chứng từ'] | .//*[@aria-label='In chứng từ']/ancestor::div[@role='button'][1]"), rowValues);
+            string rowButtonXPathTemplate = ResolveInputValue(GetStringValue(step, "row_button_xpath_template", string.Empty), rowValues);
+            string printButtonXPath = ResolveInputValue(GetStringValue(step, "print_button_xpath", "//button[normalize-space()='Print' or normalize-space()='PRINT' or normalize-space()='In' or @aria-label='Print' or @title='Print' or contains(translate(@id, 'PRINT', 'print'), 'print')]"), rowValues);
+            string printPageReadyXPath = ResolveInputValue(GetStringValue(step, "print_page_ready_xpath", printButtonXPath), rowValues);
+            int effectiveInMs = inMs > 0 ? inMs : 5000;
+            int newTabTimeoutMs = GetIntValue(step, "new_tab_timeout_ms", Math.Max(effectiveInMs, 10000));
+            int waitAfterOpenMs = GetIntValue(step, "wait_after_open_ms", 1500);
+            int waitAfterPrintMs = GetIntValue(step, "wait_after_print_ms", 3000);
+            int waitAfterCloseMs = GetIntValue(step, "wait_after_close_ms", 800);
+            bool closePrintedTab = GetBoolValueFlexible(step, "close_print_tab_after_print", true);
+            string mainWindow = driverGC.CurrentWindowHandle;
+
+            IWebElement tableElement = WaitAndFindElement(driverGC, By.XPath(tableXPath), effectiveInMs);
+            ScrollToElement(driverGC, tableElement);
+
+            int rowCount = tableElement.FindElements(By.XPath(rowXPath)).Count;
+            if (rowCount <= 0)
+            {
+                throw new NoSuchElementException($"Không tìm thấy dòng nào trong bảng cần in. table_xpath='{tableXPath}', row_xpath='{rowXPath}'.");
+            }
+
+            Logger.LogInfo($"[JSON PRINT TABLE] Bắt đầu in {rowCount} dòng. table_xpath='{tableXPath}'.");
+
+            for (int rowIndex = 0; rowIndex < rowCount; rowIndex++)
+            {
+                driverGC.SwitchTo().Window(mainWindow);
+                driverGC.SwitchTo().DefaultContent();
+                _lastIframePath = null;
+
+                tableElement = WaitAndFindElement(driverGC, By.XPath(tableXPath), effectiveInMs);
+                ScrollToElement(driverGC, tableElement);
+                var rows = tableElement.FindElements(By.XPath(rowXPath));
+                if (rowIndex >= rows.Count)
+                {
+                    throw new NoSuchElementException($"Số dòng hiện tại của bảng thay đổi khi đang in. rowIndex={rowIndex}, currentRowCount={rows.Count}.");
+                }
+
+                IWebElement rowElement = rows[rowIndex];
+                ScrollToElement(driverGC, rowElement);
+                IWebElement printRowButton = ResolvePrintRowButton(driverGC, rowElement, rowIndex, rowButtonXPath, rowButtonXPathTemplate, effectiveInMs);
+                ScrollToElement(driverGC, printRowButton);
+
+                IReadOnlyCollection<string> handlesBeforeClick = driverGC.WindowHandles.ToList();
+                ClickElementWithJsFallback(driverGC, printRowButton);
+                SwitchToNewTab(driverGC, handlesBeforeClick, newTabTimeoutMs, $"print_row_{rowIndex + 1}");
+
+                WaitAndFindElement(driverGC, By.XPath(printPageReadyXPath), Math.Max(effectiveInMs, 5000));
+                SleepMs(waitAfterOpenMs);
+
+                IWebElement printButton = WaitAndFindElement(driverGC, By.XPath(printButtonXPath), Math.Max(effectiveInMs, 5000));
+                ScrollToElement(driverGC, printButton);
+                ClickElementWithJsFallback(driverGC, printButton);
+                Logger.LogInfo($"[JSON PRINT TABLE] Đã nhấn print cho dòng {rowIndex + 1}/{rowCount}.");
+                SleepMs(waitAfterPrintMs);
+
+                if (closePrintedTab)
+                {
+                    CloseCurrentTabAndSwitchBack(driverGC, mainWindow, waitAfterCloseMs);
+                }
+            }
+
+            driverGC.SwitchTo().Window(mainWindow);
+            driverGC.SwitchTo().DefaultContent();
+            _lastIframePath = null;
+        }
+
+        private static IWebElement ResolvePrintRowButton(IWebDriver driverGC, IWebElement rowElement, int rowIndex, string rowButtonXPath, string rowButtonXPathTemplate, int timeoutMs)
+        {
+            if (!string.IsNullOrWhiteSpace(rowButtonXPathTemplate))
+            {
+                string resolvedTemplate = rowButtonXPathTemplate
+                    .Replace("{{row_index_zero_based}}", rowIndex.ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                    .Replace("{{row_index_one_based}}", (rowIndex + 1).ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase);
+                return WaitAndFindElement(driverGC, By.XPath(resolvedTemplate), timeoutMs);
+            }
+
+            var relativeMatches = rowElement.FindElements(By.XPath(rowButtonXPath));
+            if (relativeMatches.Count > 0)
+            {
+                return relativeMatches[0];
+            }
+
+            return WaitAndFindElement(driverGC, By.XPath(rowButtonXPath), timeoutMs);
+        }
+
+        private static void ClickElementWithJsFallback(IWebDriver driverGC, IWebElement element)
+        {
+            try
+            {
+                element.Click();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("[JSON CLICK] Click thường thất bại, thử click bằng JavaScript.", ex);
+                ((IJavaScriptExecutor)driverGC).ExecuteScript("arguments[0].click();", element);
+            }
+        }
+
+        private static void CloseCurrentTabAndSwitchBack(IWebDriver driverGC, string mainWindow, int waitAfterCloseMs)
+        {
+            string currentWindow = driverGC.CurrentWindowHandle;
+            if (string.Equals(currentWindow, mainWindow, StringComparison.Ordinal))
+            {
+                driverGC.SwitchTo().DefaultContent();
+                _lastIframePath = null;
+                return;
+            }
+
+            driverGC.Close();
+            driverGC.SwitchTo().Window(mainWindow);
+            driverGC.SwitchTo().DefaultContent();
+            _lastIframePath = null;
+            SleepMs(waitAfterCloseMs);
         }
 
         private static bool IsElementNotFoundException(Exception ex)
@@ -592,7 +718,7 @@ namespace BIDVAutoVS2022
             return -1;
         }
 
-        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck)
+        private static void ExecuteUiStep(Dictionary<string, string> rowValues, IWebDriver driverGC, Actions actions, string typeBy, string selector, string sel_id, string inputValue, string replaceValue, int inMs, bool isClick, bool isClickAc, bool isClickRow, bool isScrollCheck, bool switchToNewTab, int newTabTimeoutMs)
         {
             if (string.Equals(typeBy, "url", StringComparison.OrdinalIgnoreCase))
             {
@@ -662,12 +788,18 @@ namespace BIDVAutoVS2022
 
             By by = BuildBy(typeBy, selector);
             IWebElement element = WaitAndFindElement(driverGC, by, inMs);
+            IReadOnlyCollection<string>? windowHandlesBeforeClick = null;
 
             if (!string.IsNullOrWhiteSpace(inputValue) && !string.Equals(inputValue, "None", StringComparison.OrdinalIgnoreCase))
             {
                 element.Clear();
                 SleepMs(1000);
                 element.SendKeys(inputValue);
+            }
+
+            if (switchToNewTab && (isClickAc || isClick || string.IsNullOrWhiteSpace(inputValue)))
+            {
+                windowHandlesBeforeClick = driverGC.WindowHandles.ToList();
             }
 
             if (isClickAc)
@@ -678,6 +810,36 @@ namespace BIDVAutoVS2022
             {
                 element.Click();
             }
+
+            if (switchToNewTab)
+            {
+                SwitchToNewTab(driverGC, windowHandlesBeforeClick, newTabTimeoutMs, selector);
+            }
+        }
+
+        private static void SwitchToNewTab(IWebDriver driverGC, IReadOnlyCollection<string>? windowHandlesBeforeClick, int timeoutMs, string selector)
+        {
+            var handlesBeforeClick = windowHandlesBeforeClick?.ToHashSet(StringComparer.Ordinal) ?? new HashSet<string>(driverGC.WindowHandles, StringComparer.Ordinal);
+            int effectiveTimeout = timeoutMs > 0 ? timeoutMs : 5000;
+            Stopwatch sw = Stopwatch.StartNew();
+
+            while (sw.ElapsedMilliseconds < effectiveTimeout)
+            {
+                IReadOnlyCollection<string> currentHandles = driverGC.WindowHandles;
+                string? newHandle = currentHandles.FirstOrDefault(handle => !handlesBeforeClick.Contains(handle));
+                if (!string.IsNullOrWhiteSpace(newHandle))
+                {
+                    driverGC.SwitchTo().Window(newHandle);
+                    driverGC.SwitchTo().DefaultContent();
+                    _lastIframePath = null;
+                    Logger.LogInfo($"[JSON WINDOW] Đã chuyển sang tab mới sau click selector='{selector}'.");
+                    return;
+                }
+
+                Thread.Sleep(200);
+            }
+
+            throw new NoSuchWindowException($"Step được cấu hình switch_to_new_tab nhưng không phát hiện tab mới sau {effectiveTimeout}ms. selector='{selector}'.");
         }
 
         private static void ExecuteDetailHoaDonStep(IWebDriver driverGC, Dictionary<string, string> rowValues, int inMs)
