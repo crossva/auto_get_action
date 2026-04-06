@@ -61,7 +61,7 @@
     "s_value": "//*[@id=\"collapseDashboardsMenu\"]/div/div[2]/a",
     "input_value": "",
     "is_click": 1,
-    "begin_time_sleep": 500,
+    "begin_time_sleep": 10000,
     "in_time_sleep": 100000,
     "end_time_sleep": 1000,
     "hieuluc": true

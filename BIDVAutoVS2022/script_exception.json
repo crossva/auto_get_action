@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Nhấn vào cho hiện menu bên phải",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "//*[@id=\"div_1_2_1_1\"]/div/div/div/div[1]/a",
+    "input_value": "",
+    "is_click": 1,
+    "begin_time_sleep": 500,
+    "in_time_sleep": 100000,
+    "end_time_sleep": 1000,
+    "hieuluc": true
+  },
+  {
+    "name": "Truy cập tiếp công việc của tôi",
+    "type_by": "path",
+    "order_by": 1,
+    "s_value": "//a[@title='KTTT - Công việc của tôi']",
+    "input_value": "",
+    "is_click": 1,
+    "begin_time_sleep": 5000,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 5000,
+    "hieuluc": true
+  }
+]

@@ -432,7 +432,7 @@ namespace BIDVAutoVS2022
                     else
                     {
                         Logger.LogInfo($"[JSON STEP] name={stepName}; type_by={typeBy}; s_value={selector}; input_value={inputValue}; begin={beginMs}; in={inMs}; end={endMs}; index_next_step={(hasIndexNextStep ? indexNextStep.ToString(CultureInfo.InvariantCulture) : "(auto)")}; is_end={isEnd}");
-                    bool stepExecuted = ExecuteUiStepWithRetry(stepName, orderBy, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
+                        bool stepExecuted = ExecuteUiStepWithRetry(stepName, orderBy, rowValues, driverGC, actions, typeBy, selector, sel_id, inputValue, replaceValue, inMs, isClick, isClickAc, isClickRow, isScrollCheck);
                         if (!stepExecuted)
                         {
                             Logger.LogInfo($"[JSON STEP SKIP] Step '{stepName}' không thực hiện được sau 2 lần thử, chuyển sang step tiếp theo.");
@@ -697,7 +697,9 @@ namespace BIDVAutoVS2022
                 string customerSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipCustomerType[0]:customerType";
                 string vatSelectId = $"singleselect-InvoiceIn:TableInvoiceIn:expenses[{detailIndex}]:expenseTbl:TooltipInputTax[0]:inputVatType";
 
-                if (!ElementExistsById(driverGC, productSelectId) || !ElementExistsById(driverGC, customerSelectId))
+                int detailRowWaitMs = Math.Max(inMs, 3000);
+                if (!ElementExistsById(driverGC, productSelectId, detailRowWaitMs)
+                    || !ElementExistsById(driverGC, customerSelectId, detailRowWaitMs))
                 {
                     break;
                 }
@@ -722,6 +724,7 @@ namespace BIDVAutoVS2022
 
                 string detailBtnId = $"icon-button-InvoiceIn:TableInvoiceIn:invoiceDetail[{detailIndex}]:Tooltip1:Icon5";
                 WaitAndFindElement(driverGC, By.Id(detailBtnId), inMs).Click();
+                WaitAndFindElement(driverGC, By.Id("decimal-input-ViewInvoiceInDetail:revenueNoTax"), Math.Max(inMs, 15000));
 
                 SetInputById(driverGC, "decimal-input-ViewInvoiceInDetail:revenueNoTax", FormatDecimal(expenseAmount), inMs);
                 SetInputById(driverGC, "decimal-input-ViewInvoiceInDetail:invoiceTaxAmount", FormatDecimal(taxAmount), inMs);
@@ -780,6 +783,11 @@ namespace BIDVAutoVS2022
         private static bool ElementExistsById(IWebDriver driverGC, string id)
         {
             return TryFindElementWithFrameMemory(driverGC, By.Id(id), 200, out _);
+        }
+
+        private static bool ElementExistsById(IWebDriver driverGC, string id, int timeoutMs)
+        {
+            return TryFindElementWithFrameMemory(driverGC, By.Id(id), timeoutMs, out _);
         }
 
         private static void SelectDropdownByValue(IWebDriver driverGC, string id, string value, int inMs)

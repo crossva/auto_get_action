@@ -158,11 +158,6 @@ namespace BIDVAutoVS2022
             string note_ = "";
             IJavaScriptExecutor js = (IJavaScriptExecutor)driverGC;
             IWebElement curElement;
-            type_by = (type_by ?? "").Trim().ToLower();
-            if (type_by == "btn")
-            {
-                type_by = "path";
-            }
             if (type_by == "id")
             {
                 Thread.Sleep(Convert.ToInt32(begin_time_sleep));
@@ -573,15 +568,6 @@ namespace BIDVAutoVS2022
                     Thread.Sleep(1000);
                     return false;
                 }
-            }
-            else
-            {
-                sql_execute = string.Format("update dv_ods_import_auto_get set state = 'draft', ");
-                note_ = string.Format("Lỗi tại bước {0}, type_by '{1}' chưa được hỗ trợ", order_by, type_by.Replace("'", "''"));
-                sql_execute += string.Format(" note = '{0}'", note_);
-                sql_execute += string.Format(" where id = {0}", ods_import_auto_get_id);
-                common_sql.ExecuteNoneQueryPostgree(sql_execute, server, port, database_name).ToString();
-                return false;
             }
             return bResult;
         }
@@ -1014,19 +1000,6 @@ namespace BIDVAutoVS2022
             return null;
         }
 
-        static bool IsElementNotFoundException(Exception ex)
-        {
-            if (ex is NoSuchElementException)
-            {
-                return true;
-            }
-
-            string message = ex.Message ?? string.Empty;
-            return message.IndexOf("không tìm thấy element", StringComparison.OrdinalIgnoreCase) >= 0
-                || message.IndexOf("khong tim thay element", StringComparison.OrdinalIgnoreCase) >= 0
-                || message.IndexOf("no such element", StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
         static void Main(string[] args)
         {
             Logger.LogInfo($"Khởi tạo tại {DateTime.Now}");
@@ -1048,14 +1021,7 @@ namespace BIDVAutoVS2022
             string server = ConfigurationManager.AppSettings["server"] ?? "10.130.2.20";
             int port = Convert.ToInt32(ConfigurationManager.AppSettings["port"] ?? "5432");
             string database_name = ConfigurationManager.AppSettings["database_name"] ?? "bidv_hcm_001";
-            string baseDir = AppContext.BaseDirectory;
-            string defaultResultDirectory = Path.Combine(baseDir, "result");
-            string path_download_setting = ConfigurationManager.AppSettings["path_download"];
-            string path_download = string.IsNullOrWhiteSpace(path_download_setting)
-                ? defaultResultDirectory
-                : (Path.IsPathRooted(path_download_setting)
-                    ? path_download_setting
-                    : Path.GetFullPath(Path.Combine(baseDir, path_download_setting)));
+            string path_download = ConfigurationManager.AppSettings["path_download"] ?? "D:\\AutoGetODS";
             string so_ngay_back_date = ConfigurationManager.AppSettings["so_ngay_back_date"] ?? "1";
             string only_run_dv_import_config_header = ConfigurationManager.AppSettings["only_run_dv_import_config_header"] ?? "0";
             string only_run_dv_import_config_auto_header = ConfigurationManager.AppSettings["only_run_dv_import_config_auto_header"] ?? "0";
@@ -1245,7 +1211,7 @@ namespace BIDVAutoVS2022
                     
 
                     //Bắt đầu mở trình duyệt
-                    FolderDownloadCur = Path.Combine(path_download, syyyymmdd);
+                    FolderDownloadCur = string.Format(@"{0}\{1}", path_download, syyyymmdd);
                     if (!System.IO.Directory.Exists(FolderDownloadCur))
                     {
                         System.IO.Directory.CreateDirectory(FolderDownloadCur);
@@ -1253,7 +1219,7 @@ namespace BIDVAutoVS2022
                     /// Trường hợp có thư mục con để dưa vào
                     if (folder_sub != "")
                     {
-                        FolderDownloadCur = Path.Combine(FolderDownloadCur, folder_sub);
+                        FolderDownloadCur = string.Format(@"{0}\{1}", FolderDownloadCur, folder_sub);
                         if (!System.IO.Directory.Exists(FolderDownloadCur))
                         {
                             System.IO.Directory.CreateDirectory(FolderDownloadCur);
@@ -1261,7 +1227,7 @@ namespace BIDVAutoVS2022
                     }
  
                     ///Thực hiện xóa file hiện hành nếu tồn tại file
-                    full_file_name_dl = Path.Combine(FolderDownloadCur, file_name_download);
+                    full_file_name_dl = string.Format(@"{0}\{1}", FolderDownloadCur, file_name_download);
                     if (is_delete == "true")
                     {
                         if (File.Exists(full_file_name_dl))
@@ -1333,53 +1299,11 @@ namespace BIDVAutoVS2022
                             {
                                 int debug_h = 1;
                             }    
-                            bool bresult = false;
-                            Exception? lastStepException = null;
-                            for (int attempt = 1; attempt <= 2; attempt++)
-                            {
-                                try
-                                {
-                                    bresult = ActrionOneStep(ref driverGC, ref actions, ref i, ref s_result_data,
-                                        type_by, begin_time_sleep, in_time_sleep, end_time_sleep,
-                                        s_value, order_by, ods_import_auto_get_id,
-                                        server, port, database_name,
-                                        is_click, input_value, is_click_ac, is_data, sql_finish, is_popup_download, FolderDownloadCur);
-                                    if (bresult)
-                                    {
-                                        break;
-                                    }
-
-                                    Logger.LogInfo($"[STEP FAIL FAST] Bước {order_by} không tìm thấy element, dừng ngay lần chạy hiện tại.");
-                                    break;
-                                }
-                                catch (Exception exStep)
-                                {
-                                    lastStepException = exStep;
-                                    if (IsElementNotFoundException(exStep))
-                                    {
-                                        Logger.LogError($"[STEP FAIL FAST] Bước {order_by} lỗi không tìm thấy element ở lần {attempt}/2.", exStep);
-                                        throw;
-                                    }
-
-                                    Logger.LogError($"[STEP RETRY] Bước {order_by} lỗi ở lần {attempt}/2.", exStep);
-                                }
-
-                                if (bresult == false)
-                                {
-                                    break;
-                                }
-
-                                if (attempt < 2)
-                                {
-                                    Thread.Sleep(1000);
-                                }
-                            }
-
-                            if (!bresult && lastStepException != null)
-                            {
-                                throw new Exception($"Không thực hiện được bước {order_by} sau 2 lần thử.", lastStepException);
-                            }
-
+                            bool bresult = ActrionOneStep(ref driverGC, ref actions, ref i, ref s_result_data,
+                                type_by, begin_time_sleep, in_time_sleep, end_time_sleep,
+                                s_value, order_by, ods_import_auto_get_id,
+                                server, port, database_name,
+                                is_click, input_value, is_click_ac, is_data, sql_finish, is_popup_download, FolderDownloadCur);
                             if (bresult == false)
                             {
                                 if (quit_browse == "1")

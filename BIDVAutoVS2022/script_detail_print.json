@@ -1,0 +1,91 @@
+[
+  {
+    "name": "Truy cập Màn hình khởi tạo",
+    "type_by": "path",
+    "order_by": 7,
+    "s_value": "//a[@title='KTTT - Màn hình khởi tạo']",
+    "input_value": "",
+    "is_click": 1,
+    "begin_time_sleep": 5000,
+    "in_time_sleep": 1000,
+    "end_time_sleep": 5000,
+    "hieuluc": true
+  },
+  {
+    "name": "Nhấn vào Truy vấn giao dịch",
+    "type_by": "path",
+    "order_by": 8,
+    "s_value": "//a[normalize-space()='Truy vấn giao dịch']",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 1000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 3000
+  },
+  {
+    "name": "Nhập từ ngày khởi tạo",
+    "type_by": "path",
+    "order_by": 9,
+    "s_value": "(//input[@placeholder='Từ ngày'])[1]",
+    "input_value": "'23/12/2025'",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 1000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 1000
+  },
+  {
+    "name": "Nhập từ ngày duyệt",
+    "type_by": "path",
+    "order_by": 10,
+    "s_value": "(//input[@placeholder='Từ ngày'])[2]",
+    "input_value": "'23/12/2025'",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 1000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 1000
+  },
+  {
+    "name": "Nhập đến ngày duyệt",
+    "type_by": "path",
+    "order_by": 11,
+    "s_value": "(//input[@placeholder='Đến ngày'])[2]",
+    "input_value": "'23/12/2025'",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 1000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 1000
+  },
+  {
+    "name": "Nhập đến ngày duyệt",
+    "type_by": "path",
+    "order_by": 12,
+    "s_value": "//button[normalize-space()='Tìm kiếm']",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 1000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 1000
+  },
+  {
+    "name": "In hóa đơn",
+    "type_by": "print_hd",
+    "order_by": 19,
+    "s_value": "",
+    "input_value": "",
+    "replace_value": "",
+    "is_click": 1,
+    "is_click_row": 0,
+    "filename_script_internal_loop": "",
+    "begin_time_sleep": 5000,
+    "in_time_sleep": 5000,
+    "end_time_sleep": 20000
+  }
+]
